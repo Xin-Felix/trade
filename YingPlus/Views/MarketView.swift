@@ -6,6 +6,7 @@ struct MarketView: View {
     @State private var filteredStocks: [StockBasicInfo] = []
     @State private var isLoadingStocks = false
     @State private var selectedStock: StockBasicInfo?
+    @State private var watchlistCodes: Set<String> = []
     @FocusState private var isSearchFieldFocused: Bool
 
     var body: some View {
@@ -25,9 +26,11 @@ struct MarketView: View {
             .navigationTitle("行情")
             .refreshable {
                 await loadStockBasics()
+                watchlistCodes = Set(WatchlistService.load().map(\.code))
             }
             .task {
                 await loadStockBasics()
+                watchlistCodes = Set(WatchlistService.load().map(\.code))
             }
         }
     }
@@ -89,9 +92,9 @@ struct MarketView: View {
                                     Button {
                                         toggleWatchlist(stock: stock)
                                     } label: {
-                                        Image(systemName: WatchlistService.contains(code: stock.code) ? "star.fill" : "star")
+                                        Image(systemName: watchlistCodes.contains(stock.code) ? "star.fill" : "star")
                                             .font(.subheadline)
-                                            .foregroundStyle(WatchlistService.contains(code: stock.code) ? .yellow : .secondary)
+                                            .foregroundStyle(watchlistCodes.contains(stock.code) ? .yellow : .secondary)
                                             .frame(width: 44, height: 44)
                                     }
                                     .buttonStyle(.plain)
@@ -162,10 +165,12 @@ struct MarketView: View {
     }
 
     private func toggleWatchlist(stock: StockBasicInfo) {
-        if WatchlistService.contains(code: stock.code) {
+        if watchlistCodes.contains(stock.code) {
             WatchlistService.remove(code: stock.code)
+            watchlistCodes.remove(stock.code)
         } else {
             WatchlistService.add(code: stock.code, name: stock.name)
+            watchlistCodes.insert(stock.code)
         }
     }
 

@@ -23,6 +23,9 @@ struct HomeView: View {
             .task {
                 await loadData()
             }
+            .onAppear {
+                Task { await loadWatchlist() }
+            }
         }
     }
 
