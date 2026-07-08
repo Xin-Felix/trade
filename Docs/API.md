@@ -1,4 +1,4 @@
-# 炒股助手 / Widgets Studio 后端接口文档
+# 盈多多 / Ying+ 后端接口文档
 
 > 本文档供 iOS 端调用参考，所有业务接口前缀为 `/api/v1`。
 >
@@ -64,7 +64,7 @@ iOS 端由 `NetworkService` 自动注入，无需手动拼接。
 
 ```json
 {
-  "message": "Widgets Studio API is running"
+  "message": "Ying+ API is running"
 }
 ```
 
@@ -211,7 +211,9 @@ Apple 登录（当前为占位实现）。
 
 ### GET /weather/beijing
 
-获取北京当前天气（后端代理 Open-Meteo，当前 iOS 端也可直接请求 Open-Meteo）。
+获取北京当前天气（后端代理 Open-Meteo）。
+
+**注意**：当前 iOS 端已不再调用此接口，天气小组件保留在 Widget 扩展中作为占位，后续会替换为行情数据组件。
 
 **认证：** 不需要登录。
 
@@ -373,6 +375,74 @@ let watchlist = try await StockService.fetchWatchlist()
 
 ---
 
+### GET /stocks/sector-moneyflow
+
+获取板块资金流排行（行业/概念）。
+
+**认证：** 需要登录。
+
+**查询参数：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `sector_type` | string | 否 | 板块类型：`industry`（行业，默认）/ `concept`（概念） |
+| `trade_date` | string | 否 | 交易日期 `YYYYMMDD`，默认取数据库最新日期 |
+| `sort_by` | string | 否 | 排序字段：`net_amount`（净流入，默认降序）、`pct_change`（涨跌幅降序）、`net_amount_asc`（净流入升序） |
+| `limit` | int | 否 | 返回条数，默认 20，最大 100 |
+
+**响应示例：**
+
+```json
+{
+  "sectors": [
+    {
+      "ts_code": "881121.TI",
+      "trade_date": "20260708",
+      "name": "半导体",
+      "lead_stock": "芯朋微",
+      "close_price": 98.09,
+      "pct_change": -0.66,
+      "company_num": 180,
+      "pct_change_stock": 16.80,
+      "net_buy_amount": 2108.00,
+      "net_sell_amount": 2041.00,
+      "net_amount": 66.00
+    }
+  ],
+  "trade_date": "20260708",
+  "sector_type": "industry"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `ts_code` | string | 板块代码，如 `881121.TI` |
+| `trade_date` | string | 交易日期（YYYYMMDD） |
+| `name` | string | 板块名称 |
+| `lead_stock` | string | 龙头股 |
+| `close_price` | float? | 领涨股/板块指数收盘价 |
+| `pct_change` | float? | 板块涨跌幅% |
+| `company_num` | int? | 成分股数量 |
+| `pct_change_stock` | float? | 领涨股涨跌幅% |
+| `net_buy_amount` | float? | 净流入-买入金额（亿元） |
+| `net_sell_amount` | float? | 净流入-卖出金额（亿元） |
+| `net_amount` | float? | 净流入金额（亿元） |
+
+**iOS 调用：**
+
+```swift
+let rank = try await StockService.fetchSectorMoneyflow(sectorType: .industry, limit: 20)
+```
+
+**iOS 展示建议：**
+
+- 行情页新增「板块资金流向」入口，默认展示行业净流入 TOP 20
+- 支持切换「行业/概念」Tab
+- 支持按净流入、涨跌幅排序
+- 点击板块可跳转板块详情（后续可接成分股列表）
+
+---
+
 ### GET /stocks/daily-basic/{code}
 
 获取股票日线因子数据（PE、PB、换手率、市值等）。
@@ -443,9 +513,21 @@ let watchlist = try await StockService.fetchWatchlist()
 let factors = try await StockService.fetchDailyBasic(code: "000001", limit: 30)
 ```
 
-## iOS 调用示例
+**iOS 指标展示：**
 
-### 完整登录流程
+股票详情页当前展示以下指标：
+
+- 市盈率 PE / PE TTM
+- 市净率 PB
+- 市销率 PS
+- 换手率
+- 量比
+- 总市值 / 流通市值
+- 股息率 TTM
+
+市值自动转换为 万/亿 单位显示。
+
+## iOS 调用示例
 
 ```swift
 // 1. 发送验证码
@@ -472,6 +554,19 @@ let token = try await AuthService.loginWithTestAccount()
 
 - 邮箱：`test@example.com`
 - 密码：`123456`
+
+> 说明：开发环境每次启动都会确保该测试账号存在且密码为 `123456`。如果之前通过验证码等方式创建过同名账号，后端会在启动时将其密码重置为 `123456`，以保证 iOS 测试登录始终可用。
+
+### AuthService 接口
+
+| 方法 | 说明 | iOS 调用示例 |
+|---|---|---|
+| `login(email:password:)` | 邮箱密码登录 | `try await AuthService.login(email: "test@example.com", password: "123456")` |
+| `loginWithTestAccount()` | 测试账号一键登录 | `try await AuthService.loginWithTestAccount()` |
+| `sendEmailCode(email:)` | 发送邮箱验证码 | `try await AuthService.sendEmailCode(email: "user@example.com")` |
+| `verifyEmailCode(email:code:)` | 校验验证码并登录 | `try await AuthService.verifyEmailCode(email: "user@example.com", code: "123456")` |
+| `restoreSession()` | 从 Keychain 恢复 token | `AuthService.restoreSession()` |
+| `logout()` | 清除 Keychain 与内存 token | `AuthService.logout()` |
 
 ### Token 自动注入
 
@@ -508,11 +603,21 @@ enum APIError: Error {
 }
 ```
 
+### iOS 端 401 处理
+
+`NetworkService` 在收到任意 401 响应时会：
+
+1. 立即清空内存中的 `authToken`。
+2. 通过 `NotificationCenter` 发送 `sessionUnauthorized` 通知。
+3. 抛出 `APIError.unauthorized`。
+
+`ContentView` 监听该通知并调用 `AuthService.logout()`，清除 Keychain token 并回到登录页。因此业务代码无需手动处理 401 跳转登录页的逻辑。
+
 ### 处理建议
 
 | 场景 | 建议 |
 |---|---|
-| `unauthorized` | 清除本地 token，跳转登录页 |
+| `unauthorized` | 已由 `NetworkService` + `ContentView` 自动处理：清 token、回登录页 |
 | `serverError` | 提示「服务器繁忙，请稍后再试」 |
 | `httpError(400, ...)` | 展示服务端返回的 detail 信息 |
 | `httpError(429, ...)` | 提示「请求过于频繁，请稍后再试」 |
@@ -552,6 +657,6 @@ iOS 端模型已使用 `CodingKeys` 做好映射，调用时直接使用 Swift �
 
 - 后端路由：`trade_backend/app/api/v1/endpoints/`
 - 后端模型：`trade_backend/app/schemas/`
-- iOS 网络层：`WidgetsStudio/Services/API/`
-- iOS 股票模型：`WidgetsStudio/Services/Stocks/StockModels.swift`
-- iOS 股票服务：`WidgetsStudio/Services/Stocks/StockService.swift`
+- iOS 网络层：`YingPlus/Services/API/`
+- iOS 股票模型：`YingPlus/Services/Stocks/StockModels.swift`
+- iOS 股票服务：`YingPlus/Services/Stocks/StockService.swift`

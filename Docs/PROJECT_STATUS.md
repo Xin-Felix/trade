@@ -1,4 +1,4 @@
-# 炒股助手 / Widgets Studio - 项目状态与开发指南
+# 盈多多 / Ying+ - 项目状态与开发指南
 
 > 更新时间：2026-07-08
 
@@ -6,7 +6,7 @@
 
 ## 当前已实现
 
-### iOS App (trade_ios/WidgetsStudio)
+### iOS App (trade_ios/YingPlus)
 
 - **底部 Tab 导航**：首页、行情、组件、设置。
 - **全局登录态**：`ContentView` 根据 `AuthService.restoreSession()` 决定展示登录页或主界面。
@@ -14,9 +14,9 @@
 - **测试账号登录**：开发环境一键登录，方便快速体验。
 - **Token 持久化**：`KeychainService` 安全保存 access token。
 - **退出登录**：`SettingsView` 清除 Keychain 和内存 token。
-- **首页 (HomeView)**：显示北京天气（调用 Open-Meteo）。
+- **首页 (HomeView)**：行情概览，展示大盘指数 + 自选股列表。
 - **行情页 (MarketView)**：大盘指数 + 自选股列表，支持搜索股票代码。
-- **行情详情 (StockDetailView)**：日/周/月/年 K 线图。
+- **行情详情 (StockDetailView)**：日/周/月/年 K 线图，支持捏合缩放、拖拽平移、长按十字光标显示 OHLC；展示股票指标（PE/PB/PS/换手率/量比/市值/股息率）。
 - **通用网络层 (NetworkService)**：
   - 支持 GET/POST/PUT/DELETE/PATCH。
   - 自动注入 Bearer Token。
@@ -25,10 +25,10 @@
 - **股票服务 (StockService)**：接入后端真实股票/K 线数据。
 - **图标**：紫色背景白色 W 的 App Icon。
 
-### Widget 扩展 (trade_ios/WidgetsStudioWidget)
+### Widget 扩展 (trade_ios/YingPlusWidget)
 
 - **时钟组件**：每分钟刷新，显示当前时间。
-- **天气组件**：每 30 分钟刷新，请求 Open-Meteo 北京天气。
+- **天气组件**：保留旧天气组件文件，后续替换为行情数据组件。
 - Widget 扩展已正常嵌入主 App Target（`Embed Foundation Extensions`）。
 
 ### 后端 (trade_backend)
@@ -78,7 +78,6 @@
 4. **Token 持久化到 Keychain**：App 重启后自动恢复登录态。
 5. **前后端目录拆分**：iOS 和后端分别放在 `trade_ios/` 和 `trade_backend/`，独立 Git 仓库管理。
 6. **Apple 登录延后**：因 Apple Developer 账号 $100 年费，待 App 成熟后再接入。
-7. **天气数据直接请求 Open-Meteo**：简单场景先走客户端，后续复杂数据统一走后端。
 
 ---
 
@@ -90,7 +89,7 @@
 - **Apple 登录**：当前为 UI 占位，后端 `app/services/auth_service.py` 中需补充 identity token 验证。
 - **数据库**：开发环境启动时自动建表；生产环境建议使用 Alembic 管理迁移。
 - **后端地址**：开发环境默认配置为 `http://172.17.82.33:8000`，模拟器调试时可改为 `http://127.0.0.1:8000`。
-- **废弃文件**：`trade_ios/StockModels.swift` 为旧版模型草稿，可安全删除，当前使用 `WidgetsStudio/Services/Stocks/StockModels.swift`。
+- **废弃文件**：`trade_ios/StockModels.swift` 为旧版模型草稿，可安全删除，当前使用 `YingPlus/Services/Stocks/StockModels.swift`。
 
 ---
 
@@ -120,7 +119,7 @@
 
 ```bash
 cd /Users/huangxin/Desktop/trade/trade_ios
-open WidgetsStudio.xcodeproj
+open YingPlus.xcodeproj
 # 选择模拟器，Cmd+R
 ```
 

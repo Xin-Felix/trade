@@ -1,26 +1,26 @@
-# 炒股助手 / Widgets Studio 架构文档
+# 盈多多 / Ying+ 架构文档
 
 ## 整体架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         用户桌面                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │  时钟组件    │  │  天气组件    │  │  行情提醒组件（后续） │  │
-│  │  (WidgetKit)│  │  (WidgetKit)│  │  (WidgetKit)        │  │
-│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘  │
+│  ┌─────────────┐  ┌─────────────────────┐  │
+│  │  时钟组件    │  │  行情提醒组件（后续） │  │
+│  │  (WidgetKit)│  │  (WidgetKit)        │  │
+│  └──────┬──────┘  └──────────┬──────────┘  │
 └─────────┼────────────────┼────────────────────┼─────────────┘
           │                │                    │
           ▼                ▼                    ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                 WidgetsStudioWidget                          │
+│                 YingPlusWidget                          │
 │            (独立 Extension，负责渲染组件)                     │
 └─────────────────────────────────────────────────────────────┘
           │
           │ 共享数据（后续通过 App Groups）
           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    WidgetsStudio                             │
+│                    YingPlus                             │
 │      (主 App：登录、行情、自选股、持仓、设置)                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │  LoginView   │  │  MarketView  │  │  SettingsView│      │
@@ -76,7 +76,8 @@
 
 - 全局登录态 + 邮箱验证码登录 + 测试账号登录。
 - 股票行情接口（单股行情、K 线、示例自选股）。
-- 天气小组件 + 时钟小组件。
+- 行情概览首页 + 行情页。
+- 交互式 K 线图：缩放、平移、十字光标。
 - iOS 与后端目录拆分，独立管理。
 
 ### 后续会在主 App 中增加
@@ -92,7 +93,7 @@
 
 ## 模块说明
 
-### 主 App (WidgetsStudio)
+### 主 App (YingPlus)
 
 | 目录 | 职责 |
 |------|------|
@@ -101,8 +102,6 @@
 | `Services/API/` | 通用网络层：请求、错误处理、Token 注入 |
 | `Services/Auth/` | 登录/认证、Keychain Token 持久化 |
 | `Services/Stocks/` | 股票业务接口与数据模型 |
-| `Services/Weather/` | 天气业务接口与数据模型 |
-| `Models/` | 跨模块共享数据模型 |
 | `Assets.xcassets/` | 应用图标与资源 |
 
 ### 网络层
@@ -120,31 +119,26 @@ Views ──▶ AuthService / StockService ──▶ NetworkService ──▶ �
 - **AuthService**：验证码登录、测试账号登录、Token 恢复/登出。
 - **KeychainService**：安全存储 access token。
 
-### Widget 扩展 (WidgetsStudioWidget)
+### Widget 扩展 (YingPlusWidget)
 
 | 文件 | 职责 |
 |------|------|
-| `WidgetsStudioWidgetBundle.swift` | Widget 入口，注册所有组件 |
+| `YingPlusWidgetBundle.swift` | Widget 入口，注册所有组件 |
 | `ClockWidget.swift` | 时钟组件：TimelineProvider + View |
-| `WeatherWidget.swift` | 天气组件：TimelineProvider + View |
+| `WeatherWidget.swift` | 天气组件：TimelineProvider + View（保留，后续替换为行情组件） |
 | `Resources/Info.plist` | 扩展声明 |
-| `Resources/WidgetsStudioWidget.entitlements` | 权限配置 |
+| `Resources/YingPlusWidget.entitlements` | 权限配置 |
 
 Widget 扩展已正常嵌入主 App Target（`Embed Foundation Extensions`）。
 
 ## 数据流
 
-### 当前实现：天气小组件
+### 当前实现：行情页与股票详情
 
-1. Widget 在 `getTimeline` 中直接请求 Open-Meteo API。
-2. 拿到数据后生成 TimelineEntry。
-3. WidgetKit 按时间轴渲染组件。
-
-### 当前实现：行情页
-
-1. `MarketView` / `StockDetailView` 调用 `StockService`。
+1. `HomeView` / `MarketView` / `StockDetailView` 调用 `StockService`。
 2. `StockService` 通过 `NetworkService` 向后端发送带 Token 的请求。
 3. 后端从 Tushare 拉取数据并返回，iOS 端解码后展示。
+4. `KLineChartView` 使用 SwiftUI `Canvas` + `Gesture` 实现缩放、平移、十字光标。
 
 ### 推荐演进：行情提醒小组件
 
