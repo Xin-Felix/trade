@@ -1,6 +1,6 @@
 import Foundation
 
-enum APIError: Error, Equatable {
+enum APIError: Error, Equatable, LocalizedError {
     case invalidURL
     case invalidResponse
     case httpError(statusCode: Int, message: String?)
@@ -9,7 +9,7 @@ enum APIError: Error, Equatable {
     case unauthorized
     case serverError
 
-    var localizedDescription: String {
+    var errorDescription: String? {
         switch self {
         case .invalidURL:
             return "请求地址无效"

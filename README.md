@@ -1,56 +1,71 @@
-# Widgets Studio
+# 炒股助手 / Widgets Studio
 
-一个 iOS 个人信息仪表盘应用。当前以天气、时钟等桌面小组件作为切入点，后续计划向股票、金融数据等个人资产管理方向演进。
+一款面向个人投资者的 iOS 应用：以桌面小组件为切入点，聚合股票行情、自选股、持仓盈亏等关键信息，让用户以最低成本掌握资产动态。
 
 ## 功能
 
-- **底部 Tab 栏**：首页、组件、设置、登录四个页面
-- **登录**：支持 Apple 登录 + 邮箱登录（后端接口预留）
-- **首页**：显示天气等个人数据
+- **底部 Tab 栏**：首页、行情、组件、设置
+- **全局登录态**：基于 JWT + Keychain，未登录时展示登录页
+- **验证码登录**：输入邮箱 → 获取验证码 → 自动注册/登录
+- **测试账号登录**：开发环境一键登录，方便快速体验
+- **首页**：显示北京天气（调用 Open-Meteo）
+- **行情页**：大盘指数 + 自选股列表（需登录），支持搜索股票代码
+- **股票详情**：日 / 周 / 月 / 年 K 线图
 - **组件**：时钟、天气等 iOS 桌面小组件
-- **网络层**：通用 `NetworkService`，支持 Token、统一错误处理
+- **网络层**：通用 `NetworkService`，支持 Token 自动注入、统一错误处理
 
 ## 项目结构
 
 ```
-WidgetsStudio/
-├── App/
-│   └── WidgetsStudioApp.swift    # 应用入口
-├── Views/
-│   ├── ContentView.swift         # Tab 栏容器
-│   ├── HomeView.swift            # 首页（天气）
-│   ├── WidgetsView.swift         # 组件列表
-│   ├── SettingsView.swift        # 设置页
-│   └── LoginView.swift           # 登录页
-├── Services/
-│   ├── API/
-│   │   ├── APIConfiguration.swift  # 基础 URL、环境配置
-│   │   ├── APIError.swift          # 统一错误类型
-│   │   └── NetworkService.swift    # 通用网络请求（支持 Token）
-│   ├── Auth/
-│   │   └── AuthService.swift       # 登录相关
-│   ├── Weather/
-│   │   ├── WeatherModels.swift     # 天气接口模型
-│   │   └── WeatherService.swift    # 天气业务接口
-├── Models/
-│   └── WeatherInfo.swift           # 天气数据模型
-└── Assets.xcassets/                # 应用图标
-    └── AppIcon.appiconset/
-
-WidgetsStudioWidget/              # Widget 扩展
-├── ClockWidget.swift             # 时钟组件
-├── WeatherWidget.swift           # 天气组件
-├── Resources/                    # Info.plist、权限配置
-└── WidgetsStudioWidgetBundle.swift
-
-Docs/                             # 文档
+trade_ios/
+├── WidgetsStudio/
+│   ├── App/
+│   │   └── WidgetsStudioApp.swift    # 应用入口
+│   ├── Views/
+│   │   ├── ContentView.swift         # 登录态判断 + Tab 栏容器
+│   │   ├── HomeView.swift            # 首页（天气）
+│   │   ├── MarketView.swift          # 行情页
+│   │   ├── StockDetailView.swift     # 股票详情
+│   │   ├── KLineChartView.swift      # K 线图
+│   │   ├── WidgetsView.swift         # 组件列表
+│   │   ├── SettingsView.swift        # 设置页（含退出登录）
+│   │   └── LoginView.swift           # 验证码登录页
+│   ├── Services/
+│   │   ├── API/
+│   │   │   ├── APIConfiguration.swift  # 基础 URL、环境配置
+│   │   │   ├── APIError.swift          # 统一错误类型
+│   │   │   └── NetworkService.swift    # 通用网络请求（支持 Token）
+│   │   ├── Auth/
+│   │   │   ├── AuthService.swift       # 登录/认证相关
+│   │   │   └── KeychainService.swift   # Token 持久化
+│   │   ├── Stocks/
+│   │   │   ├── StockModels.swift       # 股票接口模型
+│   │   │   └── StockService.swift      # 股票业务接口
+│   │   └── Weather/
+│   │       ├── WeatherModels.swift     # 天气接口模型
+│   │       └── WeatherService.swift    # 天气业务接口
+│   ├── Models/
+│   │   └── WeatherInfo.swift           # 天气数据模型
+│   └── Assets.xcassets/                # 应用图标
+│
+├── WidgetsStudioWidget/              # Widget 扩展
+│   ├── ClockWidget.swift             # 时钟组件
+│   ├── WeatherWidget.swift           # 天气组件
+│   └── WidgetsStudioWidgetBundle.swift
+│
+└── Docs/                             # 文档
+    ├── PRD.md                        # 产品需求文档
+    ├── Architecture.md               # 架构文档
+    ├── API.md                        # 后端接口文档
+    └── PROJECT_STATUS.md             # 项目状态与开发指南
 ```
 
 ## 技术栈
 
 - SwiftUI
 - WidgetKit
-- URLSession（Open-Meteo 天气 API）
+- URLSession（后端 API）
+- Keychain（Token 持久化）
 
 ## 运行要求
 
@@ -59,21 +74,40 @@ Docs/                             # 文档
 
 ## 运行方式
 
-1. 用 Xcode 打开 `WidgetsStudio.xcodeproj`
-2. 选择目标设备或模拟器
-3. 按 Cmd+R 运行主 App
-4. 登录页支持 Apple 登录和邮箱登录（邮箱登录目前是 UI 占位，需接后端）
+1. 启动后端（详见 `../trade_backend/README.md`）
+2. 用 Xcode 打开 `WidgetsStudio.xcodeproj`
+3. 选择目标设备或模拟器
+4. 按 Cmd+R 运行主 App
+
+## 后端地址
+
+开发环境默认指向：
+
+```swift
+// 局域网地址，方便真机调试
+http://172.17.82.33:8000
+
+// 模拟器本地调试也可使用
+http://127.0.0.1:8000
+```
+
+可在 `WidgetsStudio/Services/API/APIConfiguration.swift` 中修改。
 
 ## 后续方向
 
-- 股票/基金数据展示
-- 个人资产 dashboard
+- 自选股云端管理（增删改查、排序）
+- 持仓录入与持仓盈亏概览
+- 个人资产 Dashboard
 - 行情提醒小组件
-- 自选股同步
+- 股价推送通知
+- 自选股/持仓多设备同步
+- Apple 登录
+- App Store 上架
 
 ## 注意事项
 
 - 天气数据使用免费 Open-Meteo API
-- 登录接口为占位实现，需接入自己的后端
+- 股票数据来自 Tushare，需要配置 `TUSHARE_TOKEN`
 - WidgetKit 组件刷新受系统调度控制，不是实时刷新
 - 真机运行需要在 Xcode 中配置正确的开发团队
+- 后端为独立仓库，位于 `../trade_backend/`

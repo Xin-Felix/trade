@@ -7,7 +7,7 @@ enum APIEnvironment {
     var baseURL: String {
         switch self {
         case .development:
-            return "https://api.dev.example.com"
+            return "http://172.17.82.33:8000"
         case .production:
             return "https://api.example.com"
         }
@@ -22,5 +22,12 @@ struct APIConfiguration {
 
     var baseURL: String {
         environment.baseURL
+    }
+}
+
+extension APIConfiguration {
+    /// v1 API 完整前缀
+    var apiV1URL: String {
+        baseURL + "/api/v1"
     }
 }

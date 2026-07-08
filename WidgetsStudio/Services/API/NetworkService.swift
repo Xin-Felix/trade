@@ -17,7 +17,7 @@ final class NetworkService {
         authToken = token
     }
 
-    private func getAuthToken() -> String? {
+    func getAuthToken() -> String? {
         tokenLock.lock()
         defer { tokenLock.unlock() }
         return authToken
@@ -75,10 +75,55 @@ final class NetworkService {
 
         do {
             let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
             return try decoder.decode(T.self, from: data)
         } catch {
             throw APIError.decodingError(error.localizedDescription)
+        }
+    }
+
+    func requestVoid(
+        _ urlString: String,
+        method: HTTPMethod = .get,
+        body: Encodable? = nil,
+        headers: [String: String] = [:]
+    ) async throws {
+        guard let url = URL(string: urlString) else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method.rawValue
+        request.timeoutInterval = APIConfiguration.shared.timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        if let token = getAuthToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        if let body = body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(body)
+        }
+
+        let (_, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200..<300:
+            return
+        case 401:
+            throw APIError.unauthorized
+        case 500..<600:
+            throw APIError.serverError
+        default:
+            throw APIError.httpError(statusCode: httpResponse.statusCode, message: nil)
         }
     }
 }

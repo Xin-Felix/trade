@@ -1,9 +1,18 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Binding var isLoggedIn: Bool
+
     var body: some View {
         NavigationStack {
             List {
+                Section("账号") {
+                    Button("退出登录", role: .destructive) {
+                        AuthService.logout()
+                        isLoggedIn = false
+                    }
+                }
+
                 Section("关于") {
                     HStack {
                         Text("应用名称")
@@ -31,5 +40,5 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView()
+    SettingsView(isLoggedIn: .constant(true))
 }

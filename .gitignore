@@ -62,14 +62,6 @@ build/
 .coverage
 htmlcov/
 
-# Backend
-Backend/.env
-Backend/.env.local
-Backend/.env.production
-Backend/alembic.ini
-Backend/*.db
-Backend/*.sqlite3
-
 # IDE
 .idea/
 .vscode/
