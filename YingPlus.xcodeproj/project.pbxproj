@@ -33,6 +33,7 @@
 		BC124421B7B79E632702B727 /* KLineChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988949E890BE306A05A57BC4 /* KLineChartView.swift */; };
 		CE044296A5D8D4D90FDF3A9B /* StockService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA34AF39D2BA60387ABA2A4 /* StockService.swift */; };
 		D2356C5051C4C61ABA30465B /* SectorMoneyflowTrendChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64CD85F4B4FC0CB10BD7ECE5 /* SectorMoneyflowTrendChartView.swift */; };
+		F1A2B3C4D5E6F70891234567 /* APITestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F70891234568 /* APITestView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -77,6 +78,7 @@
 		AABBCCDDEEFF001122334456 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Auth/KeychainService.swift; sourceTree = "<group>"; };
 		AE3D40FEC738AB1E0C9CD3B7 /* SectorMoneyflowTrendView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SectorMoneyflowTrendView.swift; path = Views/SectorMoneyflowTrendView.swift; sourceTree = "<group>"; };
 		FBA34AF39D2BA60387ABA2A4 /* StockService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Stocks/StockService.swift; sourceTree = "<group>"; };
+		F1A2B3C4D5E6F70891234568 /* APITestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/APITestView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -126,6 +128,7 @@
 				7E0040DEA87A631CAF1AF239 /* StockModels.swift */,
 				A1B2C3D4E5F6789012345679 /* KLineCacheService.swift */,
 				FBA34AF39D2BA60387ABA2A4 /* StockService.swift */,
+				F1A2B3C4D5E6F70891234568 /* APITestView.swift */,
 				39364A7A8B18A704A1F626AC /* Info.plist */,
 				FD9A4E52B203AE5623F582AB /* Views */,
 			);
@@ -275,6 +278,7 @@
 				CE044296A5D8D4D90FDF3A9B /* StockService.swift in Sources */,
 				D2356C5051C4C61ABA30465B /* SectorMoneyflowTrendChartView.swift in Sources */,
 				ACD801E0E302D886B72344A3 /* SectorMoneyflowTrendView.swift in Sources */,
+				F1A2B3C4D5E6F70891234567 /* APITestView.swift in Sources */,
 			);
 		};
 		000000000000000121000000 /* Sources */ = {

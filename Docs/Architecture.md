@@ -75,16 +75,18 @@
 ### 当前已实现
 
 - 全局登录态 + 邮箱验证码登录 + 测试账号登录。
-- 股票行情接口（单股行情、K 线、示例自选股）。
-- 行情概览首页 + 行情页。
-- 交互式 K 线图：缩放、平移、十字光标。
+- 股票行情接口（单股行情、K 线、自选股、板块资金流、板块资金趋势）。
+- 行情概览首页 + 行情页 + 股票/指数详情页。
+- 交互式 K 线图：缩放、平移、十字光标、长按显示当天收盘价与涨跌幅。
+- 板块资金流动态趋势图：时间段选择、当日/累计切换、排序、横屏、保存相册。
+- 自选股本地缓存：搜索和股票详情页可添加/移除，首页展示并支持左滑删除。
 - iOS 与后端目录拆分，独立管理。
 
 ### 后续会在主 App 中增加
 
-- 自选股云端管理（增删改查、排序）。
 - 持仓录入与持仓盈亏概览。
 - 个人资产 Dashboard。
+- 行情推送通知。
 
 ### 后续会在 Widget 扩展中增加
 
@@ -98,10 +100,10 @@
 | 目录 | 职责 |
 |------|------|
 | `App/` | 应用入口 `@main` |
-| `Views/` | SwiftUI 界面：登录、首页、行情、股票详情、K 线、组件列表、设置 |
+| `Views/` | SwiftUI 界面：登录、首页、行情、股票详情、指数详情、K 线、板块资金、组件列表、设置 |
 | `Services/API/` | 通用网络层：请求、错误处理、Token 注入 |
 | `Services/Auth/` | 登录/认证、Keychain Token 持久化 |
-| `Services/Stocks/` | 股票业务接口与数据模型 |
+| `Services/Stocks/` | 股票业务接口、数据模型、自选股本地缓存、K 线本地缓存 |
 | `Assets.xcassets/` | 应用图标与资源 |
 
 ### 网络层
@@ -135,10 +137,12 @@ Widget 扩展已正常嵌入主 App Target（`Embed Foundation Extensions`）。
 
 ### 当前实现：行情页与股票详情
 
-1. `HomeView` / `MarketView` / `StockDetailView` 调用 `StockService`。
+1. `HomeView` / `MarketView` / `StockDetailView` / `IndexDetailView` 调用 `StockService`。
 2. `StockService` 通过 `NetworkService` 向后端发送带 Token 的请求。
 3. 后端从 Tushare 拉取数据并返回，iOS 端解码后展示。
-4. `KLineChartView` 使用 SwiftUI `Canvas` + `Gesture` 实现缩放、平移、十字光标。
+4. `KLineChartView` 使用 SwiftUI `Canvas` + `Gesture` 实现缩放、平移、十字光标，长按可将当天收盘价与涨跌幅回传给父视图更新 header。
+5. `SectorMoneyflowTrendChartView` 使用 `Canvas` 自绘多折线，支持当日/累计切换、排序、横屏、保存相册。
+6. 自选股通过 `WatchlistService` 存储在 `UserDefaults`，不依赖后端。
 
 ### 推荐演进：行情提醒小组件
 
@@ -160,11 +164,13 @@ Widget 扩展已正常嵌入主 App Target（`Embed Foundation Extensions`）。
 | 数据 | 存储位置 | 说明 |
 |---|---|---|
 | Access Token | Keychain | 主 App 重启后自动恢复登录态 |
-| 自选股/持仓 | 后端 MySQL | 登录后从云端拉取 |
+| 自选股 | UserDefaults（iOS 端） | 用户手动添加/移除，不与后端同步 |
+| 股票基础信息列表 | 本地文件（Documents） | `StockListCacheService` 每天刷新一次，供搜索使用 |
+| K 线数据 | 本地文件（Documents） | `KLineCacheService` 按 code + period 缓存，支持增量更新 |
 | Widget 共享数据 | App Groups（后续） | 主 App 写、Widget 读 |
 
 ## 部署关系
 
 - iOS App 通过 `APIConfiguration.baseURL` 连接后端。
-- 开发环境默认指向局域网地址 `http://172.17.82.33:8000`，真机调试时确保手机与 Mac 在同一局域网。
+- 开发环境默认指向局域网地址 `http://192.168.31.86:8000`，真机调试时确保手机与 Mac 在同一局域网。
 - 生产环境应切换为 HTTPS 域名，并在 `production` 环境中配置。

@@ -4,13 +4,14 @@ struct StockDetailView: View {
     let code: String
     let name: String
 
-    @State private var selectedPeriod: KlinePeriod = .day
+    @State private var selectedPeriod: KlinePeriod = .intraday
     @State private var klines: [KlineData] = []
     @State private var selectedKline: KlineData?
     @State private var quote: StockData?
     @State private var dailyBasic: DailyBasicData?
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var refreshTimer: Timer?
 
     var body: some View {
         ZStack {
@@ -32,9 +33,17 @@ struct StockDetailView: View {
             await loadData()
         }
         .onChange(of: selectedPeriod) { _, _ in
+            selectedKline = nil
             Task {
                 await loadKlines()
             }
+            setupAutoRefresh()
+        }
+        .onAppear {
+            setupAutoRefresh()
+        }
+        .onDisappear {
+            stopAutoRefresh()
         }
     }
 
@@ -54,6 +63,10 @@ struct StockDetailView: View {
                     Text(selectedKline.tradeDate)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                } else if selectedPeriod.isIntraday, let last = klines.first {
+                    Text(last.tradeDate)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Button {
@@ -66,16 +79,16 @@ struct StockDetailView: View {
                 .buttonStyle(.plain)
             }
 
-            let displayPrice = selectedKline?.close ?? quote?.price
-            let displayChangePercent = selectedKlineChangePercent
+            let price = displayPrice
+            let changePercent = selectedKlineChangePercent
 
-            if let price = displayPrice {
+            if let price = price {
                 HStack(alignment: .lastTextBaseline, spacing: 12) {
                     Text(String(format: "%.2f", price))
                         .font(.system(size: 32, weight: .bold))
                         .foregroundStyle(displayColor)
 
-                    if let changePercent = displayChangePercent {
+                    if let changePercent = changePercent {
                         Text(String(format: "%.2f%%", changePercent))
                             .font(.title3)
                             .fontWeight(.semibold)
@@ -106,18 +119,38 @@ struct StockDetailView: View {
     }
 
     private var selectedKlineChangePercent: Double? {
-        guard let selectedKline = selectedKline else {
-            return quote?.changePercent
+        if let selectedKline = selectedKline {
+            // 长按选中：用昨收价计算涨跌幅
+            if let preClose = quote?.preClose, preClose != 0 {
+                return (selectedKline.close - preClose) / preClose * 100
+            }
+            guard selectedKline.open != 0 else { return 0 }
+            return (selectedKline.close - selectedKline.open) / selectedKline.open * 100
         }
-        guard selectedKline.open != 0 else { return 0 }
-        return (selectedKline.close - selectedKline.open) / selectedKline.open * 100
+
+        // 分时模式：最新价 vs 昨日收盘价
+        if selectedPeriod.isIntraday, let preClose = quote?.preClose, preClose != 0,
+           let latestClose = klines.first?.close {
+            return (latestClose - preClose) / preClose * 100
+        }
+
+        return quote?.changePercent
+    }
+
+    private var displayPrice: Double? {
+        if let selectedKline = selectedKline {
+            return selectedKline.close
+        }
+        // 分时模式：显示最新价（后端降序，first=最新）
+        if selectedPeriod.isIntraday, let latestClose = klines.first?.close {
+            return latestClose
+        }
+        return quote?.price
     }
 
     private var displayColor: Color {
-        guard let selectedKline = selectedKline else {
-            return (quote?.changePercent ?? 0) >= 0 ? .red : .green
-        }
-        return selectedKline.close >= selectedKline.open ? .red : .green
+        let change = selectedKlineChangePercent ?? 0
+        return change >= 0 ? .red : .green
     }
 
     // MARK: - Period Picker
@@ -247,6 +280,24 @@ struct StockDetailView: View {
             .shimmer()
     }
 
+    // MARK: - Auto Refresh (分时模式每分钟刷新)
+
+    private func setupAutoRefresh() {
+        stopAutoRefresh()
+        guard selectedPeriod.isIntraday else { return }
+
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+            Task { @MainActor in
+                await loadKlines()
+            }
+        }
+    }
+
+    private func stopAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
     // MARK: - Data Loading
 
     private func loadData() async {
@@ -267,6 +318,28 @@ struct StockDetailView: View {
     private func loadKlines() async {
         errorMessage = nil
 
+        // 分时 K 线不缓存，直接从服务端拉取
+        if selectedPeriod.isIntraday {
+            // 首次加载才显示 loading，自动刷新时保持现有数据展示
+            if klines.isEmpty {
+                isLoading = true
+            }
+            defer { isLoading = false }
+
+            do {
+                let intradayData = try await StockService.fetchIntradayKlines(code: code, period: "1", limit: 240)
+                klines = intradayData.map { $0.toKlineData() }
+            } catch APIError.unauthorized {
+                errorMessage = "未登录，请先登录"
+            } catch {
+                if klines.isEmpty {
+                    errorMessage = "加载失败: \(error.localizedDescription)"
+                }
+            }
+            return
+        }
+
+        // 日/周/月/年 K 线走缓存逻辑
         // 1. 先读本地缓存并展示
         let cached = KLineCacheService.load(code: code, period: selectedPeriod)
         if !cached.isEmpty {
@@ -306,6 +379,7 @@ struct StockDetailView: View {
     private func remoteFetchLimit(for period: KlinePeriod, cachedCount: Int) -> Int {
         if cachedCount > 0 {
             switch period {
+            case .intraday: return 240
             case .day: return 60
             case .week: return 20
             case .month: return 12
@@ -313,6 +387,7 @@ struct StockDetailView: View {
             }
         } else {
             switch period {
+            case .intraday: return 240
             case .day: return 500
             case .week: return 200
             case .month: return 120

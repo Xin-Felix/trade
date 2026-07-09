@@ -15,7 +15,7 @@ enum AuthService {
 
     /// 开发环境快速登录（测试账号）
     static func loginWithTestAccount() async throws -> String {
-        try await login(email: "test@example.com", password: "123456")
+        try await login(email: "1538933906@qq.com", password: "123456")
     }
 
     /// 发送邮箱验证码

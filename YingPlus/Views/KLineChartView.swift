@@ -54,7 +54,7 @@ struct KLineChartView: View {
     }
 
     // 布局
-    private let rightPadding: CGFloat = 56
+    private let rightPadding: CGFloat = 64
     private let leftPadding: CGFloat = 8
 
     var body: some View {
@@ -361,7 +361,7 @@ struct KLineChartView: View {
                     .padding(.vertical, 1)
                     .background(cursorLabelBg)
                     .clipShape(RoundedRectangle(cornerRadius: 3))
-                    .position(x: size.width - rightPadding / 2, y: y)
+                    .position(x: size.width - rightPadding / 2 + 2, y: y)
             }
 
             // 成交量最大值标签
@@ -372,7 +372,7 @@ struct KLineChartView: View {
                 .padding(.vertical, 1)
                 .background(cursorLabelBg)
                 .clipShape(RoundedRectangle(cornerRadius: 3))
-                .position(x: size.width - rightPadding / 2, y: volumeTop + 10)
+                .position(x: size.width - rightPadding / 2 + 2, y: volumeTop + 10)
         }
     }
 

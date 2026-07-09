@@ -14,15 +14,20 @@
 - **测试账号登录**：开发环境一键登录，方便快速体验。
 - **Token 持久化**：`KeychainService` 安全保存 access token。
 - **退出登录**：`SettingsView` 清除 Keychain 和内存 token。
-- **首页 (HomeView)**：行情概览，展示大盘指数 + 自选股列表。
-- **行情页 (MarketView)**：大盘指数 + 自选股列表，支持搜索股票代码。
-- **行情详情 (StockDetailView)**：日/周/月/年 K 线图，支持捏合缩放、拖拽平移、长按十字光标显示 OHLC；展示股票指标（PE/PB/PS/换手率/量比/市值/股息率）。
+- **首页 (HomeView)**：行情概览，展示大盘指数 + 自选股列表；左滑删除自选股。
+- **行情页 (MarketView)**：搜索股票代码/名称/拼音，搜索结果可一键加入自选股。
+- **行情详情 (StockDetailView)**：日/周/月/年 K 线图，支持捏合缩放、拖拽平移、长按十字光标显示 OHLC 并将当天收盘价/涨跌幅回显到顶部 header；展示股票指标（PE/PB/PS/换手率/量比/市值/股息率）。
+- **指数详情 (IndexDetailView)**：大盘指数日 K 线图（长按同样可查看当天数据）。
+- **板块资金流向 (SectorMoneyflowView)**：行业/概念板块净流入排行，支持排序。
+- **板块资金动态趋势 (SectorMoneyflowTrendView)**：选择时间段展示折线图，支持当日/累计净流入切换、排序、Top N、横屏查看、保存相册。
+- **自选股本地缓存**：`WatchlistService` 使用 `UserDefaults` 存储，搜索页和股票详情页均可添加/移除。
 - **通用网络层 (NetworkService)**：
   - 支持 GET/POST/PUT/DELETE/PATCH。
   - 自动注入 Bearer Token。
   - 统一错误处理 (`APIError`)。
   - 支持 204 No Content 响应（`requestVoid`）。
-- **股票服务 (StockService)**：接入后端真实股票/K 线数据。
+- **股票服务 (StockService)**：接入后端真实股票/K 线/板块资金流数据。
+- **K 线图 (KLineChartView)**：自绘 Canvas，坐标轴标签带背景，避免被 K 线遮挡。
 - **图标**：紫色背景白色 W 的 App Icon。
 
 ### Widget 扩展 (trade_ios/YingPlusWidget)
@@ -38,7 +43,7 @@
 - **FastAPI 分层架构**：
   - `app/api/v1/endpoints/`：路由
   - `app/core/`：配置、安全、依赖
-  - `app/db/`：数据库（MySQL + SQLAlchemy）
+  - `app/db/`：数据库（PostgreSQL/TimescaleDB + SQLAlchemy）
   - `app/models/`：ORM 模型
   - `app/schemas/`：Pydantic 模型
   - `app/services/`：业务逻辑
@@ -51,8 +56,9 @@
 - **兼容登录**：`POST /api/v1/auth/login/email` 保留密码登录（测试账号用）
 - **认证保护**：股票接口统一依赖 `get_current_user`
 - **SMTP 邮件**：接入 QQ 邮箱 SMTP 发送验证码
-- **股票数据**：接入 Tushare，日线从 Tushare 拉取并落库；周/月/年线由日线聚合
-- **Docker 一键启动**：`docker-compose.yml` + `Dockerfile` 启动 MySQL + backend
+- **股票数据**：接入 Tushare，日线从 Tushare 拉取并落库；周/月/年线由日线聚合；大盘指数日线通过 `index_daily` 实时获取
+- **板块资金流**：支持单日排行和时间段趋势接口
+- **Docker 一键启动**：`docker-compose.yml` + `Dockerfile` 启动 PostgreSQL + Redis + backend
 
 ### 项目结构
 
@@ -88,8 +94,7 @@
 - **Tushare Token**：股票真实数据需配置 `TUSHARE_TOKEN`。
 - **Apple 登录**：当前为 UI 占位，后端 `app/services/auth_service.py` 中需补充 identity token 验证。
 - **数据库**：开发环境启动时自动建表；生产环境建议使用 Alembic 管理迁移。
-- **后端地址**：开发环境默认配置为 `http://172.17.82.33:8000`，模拟器调试时可改为 `http://127.0.0.1:8000`。
-- **废弃文件**：`trade_ios/StockModels.swift` 为旧版模型草稿，可安全删除，当前使用 `YingPlus/Services/Stocks/StockModels.swift`。
+- **后端地址**：开发环境默认配置为 `http://192.168.31.86:8000`，模拟器调试时可改为 `http://127.0.0.1:8000`。
 
 ---
 
@@ -97,9 +102,9 @@
 
 ### 近期
 
-1. 自选股管理：前端增删改 + 后端持久化。
-2. 持仓盈亏：用户可录入持仓，展示实时盈亏。
-3. 行情提醒小组件：把股票数据展示到桌面小组件。
+1. 持仓盈亏：用户可录入持仓，展示实时盈亏。
+2. 行情提醒小组件：把股票数据展示到桌面小组件。
+3. iCloud 同步自选股（可选）：当前自选股仅存在本地，换设备会丢失。
 
 ### 中期
 

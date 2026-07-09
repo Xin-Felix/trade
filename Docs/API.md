@@ -25,7 +25,7 @@
 
 ```swift
 // 局域网地址，方便真机调试
-http://172.17.82.33:8000
+http://192.168.31.86:8000
 
 // 模拟器本地调试也可使用
 http://127.0.0.1:8000
@@ -173,7 +173,7 @@ let token = try await AuthService.verifyEmailCode(email: "user@example.com", cod
 
 ```json
 {
-  "email": "test@example.com",
+  "email": "1538933906@qq.com",
   "password": "123456"
 }
 ```
@@ -183,7 +183,7 @@ let token = try await AuthService.verifyEmailCode(email: "user@example.com", cod
 **iOS 调用：**
 
 ```swift
-let token = try await AuthService.login(email: "test@example.com", password: "123456")
+let token = try await AuthService.login(email: "1538933906@qq.com", password: "123456")
 // 或
 let token = try await AuthService.loginWithTestAccount()
 ```
@@ -285,13 +285,13 @@ let quote = try await StockService.fetchQuote(code: "000001")
 
 ### GET /stocks/klines/{code}
 
-获取股票 K 线数据。
+获取股票或大盘指数 K 线数据。
 
 **路径参数：**
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `code` | string | 股票代码 |
+| `code` | string | 股票代码或指数代码。股票支持 `000001`、`000001.SZ`、`600519.SH`、`00700.HK` 等格式；指数需传完整代码，如 `000001.SH`（上证指数）、`399001.SZ`（深证成指）、`399006.SZ`（创业板指） |
 
 **查询参数：**
 
@@ -299,6 +299,11 @@ let quote = try await StockService.fetchQuote(code: "000001")
 |---|---|---|---|
 | `period` | string | 否 | 周期：`D`（日）、`W`（周）、`M`（月）、`Y`（年），默认 `D` |
 | `limit` | int | 否 | 返回条数，默认 30，最大 500 |
+
+**说明：**
+
+- 个股 K 线从本地数据库读取。
+- 大盘指数日线通过 Tushare `pro.index_daily` 实时获取（指数目前仅日线支持，周/月/年线可后续扩展）。
 
 **响应示例：**
 
@@ -340,7 +345,13 @@ let klines = try await StockService.fetchKlines(code: "000001", period: .day, li
 
 ### GET /stocks/watchlist
 
-获取示例自选股列表。
+获取用户自选股列表。
+
+**说明：**
+
+- 自选股存储在 iOS 端本地（`UserDefaults`），不再由后端维护。
+- 该接口读取本地缓存的股票代码，并发调用 `/stocks/quote/{code}` 刷新最新行情后返回。
+- 添加/删除自选股通过 iOS 端的 `WatchlistService` 操作本地缓存。
 
 **响应示例：**
 
@@ -363,14 +374,23 @@ let klines = try await StockService.fetchKlines(code: "000001", period: .day, li
 ]
 ```
 
-**说明：**
-
-当前后端返回固定的示例股票列表（平安银行、万科A、贵州茅台、腾讯控股）。后续会改为用户可自定义的自选股持久化。
-
 **iOS 调用：**
 
 ```swift
 let watchlist = try await StockService.fetchWatchlist()
+```
+
+**iOS 本地缓存操作：**
+
+```swift
+// 添加
+WatchlistService.add(code: "000001", name: "平安银行")
+
+// 删除
+WatchlistService.remove(code: "000001")
+
+// 判断是否已添加
+let isAdded = WatchlistService.contains(code: "000001")
 ```
 
 ---
@@ -440,6 +460,77 @@ let rank = try await StockService.fetchSectorMoneyflow(sectorType: .industry, li
 - 支持切换「行业/概念」Tab
 - 支持按净流入、涨跌幅排序
 - 点击板块可跳转板块详情（后续可接成分股列表）
+
+---
+
+### GET /stocks/sector-moneyflow/trend
+
+获取板块资金流时间段趋势，用于动态折线图展示。
+
+**认证：** 需要登录。
+
+**查询参数：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `sector_type` | string | 否 | 板块类型：`industry`（行业，默认）/ `concept`（概念） |
+| `start_date` | string | 是 | 开始日期 `YYYYMMDD` |
+| `end_date` | string | 是 | 结束日期 `YYYYMMDD` |
+| `top_n` | int | 否 | 返回累计净流入前 N 的板块，默认 30，最大 100 |
+
+**响应示例：**
+
+```json
+{
+  "sector_type": "industry",
+  "start_date": "20250701",
+  "end_date": "20250708",
+  "dates": ["20250701", "20250702", "20250704", "20250707", "20250708"],
+  "series": [
+    {
+      "ts_code": "881001.TI",
+      "name": "煤炭开采",
+      "values": [
+        {"trade_date": "20250701", "net_amount": 12.5, "pct_change": 1.2},
+        {"trade_date": "20250702", "net_amount": -3.2, "pct_change": -0.5}
+      ]
+    }
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sector_type` | string | 板块类型 |
+| `start_date` | string | 开始日期（YYYYMMDD） |
+| `end_date` | string | 结束日期（YYYYMMDD） |
+| `dates` | list[string] | 该时间段内有数据的交易日列表（已排序） |
+| `series` | list[object] | 每个板块一条数据序列 |
+| `series[].ts_code` | string | 板块代码 |
+| `series[].name` | string | 板块名称 |
+| `series[].values` | list[object] | 按日期顺序排列的每日数据 |
+| `series[].values[].trade_date` | string | 交易日（YYYYMMDD） |
+| `series[].values[].net_amount` | float | 净流入金额（亿元） |
+| `series[].values[].pct_change` | float? | 板块涨跌幅% |
+
+**iOS 调用：**
+
+```swift
+let trend = try await StockService.fetchSectorMoneyflowTrend(
+    sectorType: .industry,
+    startDate: "20250701",
+    endDate: "20250708",
+    topN: 10
+)
+```
+
+**iOS 展示建议：**
+
+- 行情页「板块资金流向」内新增「资金流动态趋势」入口
+- 选择时间段后展示多折线图
+- 支持「当日净流入 / 累计净流入」切换
+- 支持按净流入、累计净流入、涨跌幅、名称排序
+- 支持横屏查看和保存图表到相册
 
 ---
 
@@ -552,7 +643,7 @@ let token = try await AuthService.loginWithTestAccount()
 
 后端启动时会自动创建测试账号：
 
-- 邮箱：`test@example.com`
+- 邮箱：`1538933906@qq.com`
 - 密码：`123456`
 
 > 说明：开发环境每次启动都会确保该测试账号存在且密码为 `123456`。如果之前通过验证码等方式创建过同名账号，后端会在启动时将其密码重置为 `123456`，以保证 iOS 测试登录始终可用。
@@ -561,7 +652,7 @@ let token = try await AuthService.loginWithTestAccount()
 
 | 方法 | 说明 | iOS 调用示例 |
 |---|---|---|
-| `login(email:password:)` | 邮箱密码登录 | `try await AuthService.login(email: "test@example.com", password: "123456")` |
+| `login(email:password:)` | 邮箱密码登录 | `try await AuthService.login(email: "1538933906@qq.com", password: "123456")` |
 | `loginWithTestAccount()` | 测试账号一键登录 | `try await AuthService.loginWithTestAccount()` |
 | `sendEmailCode(email:)` | 发送邮箱验证码 | `try await AuthService.sendEmailCode(email: "user@example.com")` |
 | `verifyEmailCode(email:code:)` | 校验验证码并登录 | `try await AuthService.verifyEmailCode(email: "user@example.com", code: "123456")` |
@@ -641,10 +732,6 @@ iOS 端模型已使用 `CodingKeys` 做好映射，调用时直接使用 Swift �
 
 | 功能 | 预计接口 | 说明 |
 |---|---|---|
-| 添加自选股 | `POST /stocks/watchlist` | 用户自定义自选股 |
-| 删除自选股 | `DELETE /stocks/watchlist/{code}` | 从用户列表中移除 |
-| 获取自选股 | `GET /stocks/watchlist` | 替换为真实用户数据 |
-| 日线因子 | `GET /stocks/daily-basic/{code}` | 已添加，PE/PB/换手率等 |
 | 财务指标 | `GET /stocks/fina-indicator/{code}` | 季度财务数据 |
 | 录入持仓 | `POST /portfolio` | 记录成本价、数量 |
 | 修改持仓 | `PUT /portfolio/{code}` | 更新成本/数量 |
@@ -653,7 +740,7 @@ iOS 端模型已使用 `CodingKeys` 做好映射，调用时直接使用 Swift �
 | Apple 登录 | `POST /auth/login/apple` | 补充真实验证 |
 | 行情提醒配置 | `POST /alerts` / `GET /alerts` | 股价/涨跌幅提醒 |
 
-## 相关文件
+> 注：自选股已改为 iOS 端本地缓存，不再规划后端接口。板块资金流动态趋势接口已上线。
 
 - 后端路由：`trade_backend/app/api/v1/endpoints/`
 - 后端模型：`trade_backend/app/schemas/`

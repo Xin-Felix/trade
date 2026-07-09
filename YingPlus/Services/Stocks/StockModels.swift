@@ -7,13 +7,24 @@ struct StockData: Identifiable, Decodable, Hashable {
     let name: String
     let price: Double
     let changePercent: Double
+    let preClose: Double?
     let updatedAt: String
+
+    init(code: String, name: String, price: Double, changePercent: Double, preClose: Double? = nil, updatedAt: String) {
+        self.code = code
+        self.name = name
+        self.price = price
+        self.changePercent = changePercent
+        self.preClose = preClose
+        self.updatedAt = updatedAt
+    }
 
     enum CodingKeys: String, CodingKey {
         case code
         case name
         case price
         case changePercent = "change_percent"
+        case preClose = "pre_close"
         case updatedAt = "updated_at"
     }
 
@@ -94,6 +105,7 @@ struct KlineData: Identifiable, Codable, Hashable {
 }
 
 enum KlinePeriod: String, CaseIterable {
+    case intraday = "1"
     case day = "D"
     case week = "W"
     case month = "M"
@@ -101,11 +113,67 @@ enum KlinePeriod: String, CaseIterable {
 
     var title: String {
         switch self {
+        case .intraday: return "分时"
         case .day: return "日K"
         case .week: return "周K"
         case .month: return "月K"
         case .year: return "年K"
         }
+    }
+
+    var isIntraday: Bool {
+        self == .intraday
+    }
+}
+
+/// 分时 K 线数据（分钟级）
+struct IntradayKlineData: Identifiable, Decodable, Hashable {
+    let id = UUID()
+    let tsCode: String
+    let datetime: String
+    let period: String
+    let open: Double
+    let high: Double
+    let low: Double
+    let close: Double
+    let volume: Double?
+    let amount: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case tsCode = "ts_code"
+        case datetime
+        case period
+        case open
+        case high
+        case low
+        case close
+        case volume
+        case amount
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(tsCode)
+        hasher.combine(datetime)
+        hasher.combine(period)
+    }
+
+    static func == (lhs: IntradayKlineData, rhs: IntradayKlineData) -> Bool {
+        lhs.tsCode == rhs.tsCode && lhs.datetime == rhs.datetime && lhs.period == rhs.period
+    }
+
+    /// 转为 KlineData 格式，方便复用 KLineChartView
+    func toKlineData() -> KlineData {
+        KlineData(
+            tsCode: tsCode,
+            tradeDate: datetime,
+            period: period,
+            open: open,
+            high: high,
+            low: low,
+            close: close,
+            volume: volume,
+            amount: amount
+        )
     }
 }
 
@@ -166,6 +234,30 @@ struct DailyBasicData: Identifiable, Decodable, Hashable {
 enum SectorMoneyflowType: String {
     case industry
     case concept
+}
+
+// MARK: - 自选股后端响应
+
+/// 后端自选股列表项
+struct WatchlistItemData: Identifiable, Decodable {
+    let id = UUID()
+    let code: String
+    let name: String
+    let tsCode: String
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case code
+        case name
+        case tsCode = "ts_code"
+        case createdAt = "created_at"
+    }
+}
+
+/// 后端自选股列表响应
+struct WatchlistResponse: Decodable {
+    let items: [WatchlistItemData]
+    let total: Int
 }
 
 /// 板块资金流数据

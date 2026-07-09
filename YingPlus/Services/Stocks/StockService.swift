@@ -49,26 +49,58 @@ enum StockService {
         return try await NetworkService.shared.request(url)
     }
 
-    /// 获取自选股列表（从本地缓存读取并刷新行情）
+    /// 获取自选股列表（从后端获取，按加入时间排序，然后并发拉取行情）
     static func fetchWatchlist() async throws -> [StockData] {
-        let codes = WatchlistService.load()
-        guard !codes.isEmpty else { return [] }
+        let url = APIConfiguration.shared.apiV1URL + "/stocks/watchlist"
+        let response: WatchlistResponse = try await NetworkService.shared.request(url)
+        let items = response.items
+        guard !items.isEmpty else { return [] }
 
-        return await withTaskGroup(of: StockData?.self) { group in
-            for item in codes {
+        // 并发拉取行情，保持后端返回的顺序
+        return await withTaskGroup(of: (Int, StockData?).self) { group in
+            for (index, item) in items.enumerated() {
                 group.addTask {
-                    try? await fetchQuote(code: item.code)
+                    let stock = try? await fetchQuote(code: item.code)
+                    return (index, stock)
                 }
             }
 
-            var result: [StockData] = []
-            for await stock in group {
+            var indexed: [(Int, StockData)] = []
+            for await (index, stock) in group {
                 if let stock = stock {
-                    result.append(stock)
+                    indexed.append((index, stock))
                 }
             }
-            return result
+            return indexed.sorted { $0.0 < $1.0 }.map(\.1)
         }
+    }
+
+    /// 添加自选股（后端）
+    static func addToWatchlist(code: String, name: String) async throws {
+        let url = APIConfiguration.shared.apiV1URL + "/stocks/watchlist"
+        let body = WatchlistAddBody(code: code, name: name)
+        let _: WatchlistItemData = try await NetworkService.shared.request(url, method: .post, body: body)
+    }
+
+    /// 删除自选股（后端）
+    static func removeFromWatchlist(code: String) async throws {
+        let url = APIConfiguration.shared.apiV1URL + "/stocks/watchlist/\(code)"
+        try await NetworkService.shared.requestVoid(url, method: .delete)
+    }
+
+    /// 获取分时 K 线数据（1/5/15/30/60 分钟）
+    static func fetchIntradayKlines(code: String, period: String = "1", limit: Int = 240) async throws -> [IntradayKlineData] {
+        var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/intraday/\(code)")!
+        components.queryItems = [
+            URLQueryItem(name: "period", value: period),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+
+        guard let url = components.url?.absoluteString else {
+            throw APIError.invalidURL
+        }
+
+        return try await NetworkService.shared.request(url)
     }
 
     /// 获取股票日线因子数据（PE/PB/换手率等）
@@ -134,9 +166,15 @@ enum StockService {
 }
 
 
-// MARK: - 自选股本地缓存
+// MARK: - 自选股服务（后端同步 + 本地缓存镜像）
 
-/// 自选股本地缓存服务，使用 UserDefaults 存储用户手动添加的股票代码。
+/// 添加自选股请求体
+private struct WatchlistAddBody: Encodable {
+    let code: String
+    let name: String
+}
+
+/// 自选股服务，数据以后端为准，本地缓存用于快速 UI 判断（如星标图标）。
 enum WatchlistService {
     private static let key = "yingplus_watchlist"
 
@@ -145,6 +183,7 @@ enum WatchlistService {
         let name: String
     }
 
+    /// 从本地缓存读取（用于快速 UI 判断）
     static func load() -> [WatchlistItem] {
         guard let data = UserDefaults.standard.data(forKey: key),
               let items = try? JSONDecoder().decode([WatchlistItem].self, from: data) else {
@@ -153,25 +192,53 @@ enum WatchlistService {
         return items
     }
 
+    /// 保存到本地缓存
     static func save(_ items: [WatchlistItem]) {
         if let data = try? JSONEncoder().encode(items) {
             UserDefaults.standard.set(data, forKey: key)
         }
     }
 
+    /// 从后端响应同步到本地缓存
+    static func syncFromBackend(_ backendItems: [WatchlistItemData]) {
+        let items = backendItems.map { WatchlistItem(code: $0.code, name: $0.name) }
+        save(items)
+    }
+
+    /// 添加自选股（先更新本地缓存，再异步同步后端）
     static func add(code: String, name: String) {
         var items = load()
         guard !items.contains(where: { $0.code == code }) else { return }
         items.append(WatchlistItem(code: code, name: name))
         save(items)
+
+        // 异步同步到后端
+        Task {
+            do {
+                try await StockService.addToWatchlist(code: code, name: name)
+            } catch {
+                print("[WatchlistService] 添加自选股到后端失败: \(error.localizedDescription)")
+            }
+        }
     }
 
+    /// 删除自选股（先更新本地缓存，再异步同步后端）
     static func remove(code: String) {
         var items = load()
         items.removeAll { $0.code == code }
         save(items)
+
+        // 异步同步到后端
+        Task {
+            do {
+                try await StockService.removeFromWatchlist(code: code)
+            } catch {
+                print("[WatchlistService] 从后端删除自选股失败: \(error.localizedDescription)")
+            }
+        }
     }
 
+    /// 判断是否已添加
     static func contains(code: String) -> Bool {
         load().contains { $0.code == code }
     }

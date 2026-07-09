@@ -52,11 +52,17 @@ struct ContentView: View {
                 }
                 .tag(2)
 
+            APITestView()
+                .tabItem {
+                    Label("接口", systemImage: "network")
+                }
+                .tag(3)
+
             SettingsView(isLoggedIn: $isLoggedIn)
                 .tabItem {
                     Label("设置", systemImage: "gear")
                 }
-                .tag(3)
+                .tag(4)
         }
     }
 }
