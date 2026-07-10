@@ -155,35 +155,55 @@ struct MarketView: View {
             NavigationLink {
                 SectorMoneyflowTrendView()
             } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "chart.pie.fill")
-                        .font(.title3)
-                        .foregroundStyle(YPColor.ai)
-                        .frame(width: 40, height: 40)
-                        .background(YPColor.ai.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                sectorEntryRow(
+                    icon: "chart.pie.fill",
+                    title: "每日资金流向",
+                    subtitle: "按天查看行业/概念板块资金净流入趋势",
+                    color: YPColor.ai
+                )
+            }
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("板块资金流向")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.primary)
-                        Text("查看行业/概念板块资金净流入排行")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.quaternary)
-                }
-                .padding(14)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            NavigationLink {
+                SectorIntradayFlowView()
+            } label: {
+                sectorEntryRow(
+                    icon: "waveform.path.ecg",
+                    title: "分时资金流向",
+                    subtitle: "概念板块实时资金流入/流出分时数据",
+                    color: YPColor.accent
+                )
             }
         }
+    }
+
+    private func sectorEntryRow(icon: String, title: String, subtitle: String, color: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(color)
+                .frame(width: 40, height: 40)
+                .background(color.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.quaternary)
+        }
+        .padding(14)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - 板块关联分析

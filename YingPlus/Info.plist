@@ -77,7 +77,9 @@
 		<true/>
 	</dict>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>保存资金流向图表到相册</string>
+	<string>保存资金流向视频到相册</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>保存资金流向视频到相册</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
