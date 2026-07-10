@@ -13,6 +13,17 @@ struct StockDetailView: View {
     @State private var errorMessage: String?
     @State private var refreshTimer: Timer?
 
+    // MARK: - V1.0 规划模块
+    // 1. ✅ AI 总结（待接入）
+    // 2. ✅ K线/分时
+    // 3. 🔲 主力资金
+    // 4. 🔲 大小单/内外盘
+    // 5. 🔲 所属板块
+    // 6. 🔲 新闻
+    // 7. 🔲 公告
+    // 8. ✅ 财务（指标）
+    // 9. 🔲 龙虎榜
+
     var body: some View {
         ZStack {
             Color(.systemBackground)
@@ -24,6 +35,12 @@ struct StockDetailView: View {
                     periodPicker
                     chartSection
                     indicatorsSection
+                    // TODO: 主力资金 section
+                    // TODO: 大小单/内外盘 section
+                    // TODO: 所属板块 section
+                    // TODO: 新闻 section
+                    // TODO: 公告 section
+                    // TODO: 龙虎榜 section
                 }
             }
         }

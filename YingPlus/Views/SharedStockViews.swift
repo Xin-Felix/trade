@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - 指数项
 
-struct IndexItem: Identifiable, Decodable {
+struct IndexItem: Identifiable, Decodable, Hashable {
     let id = UUID()
     let name: String
     let value: Double
@@ -14,6 +14,14 @@ struct IndexItem: Identifiable, Decodable {
         case value
         case change
         case tsCode = "ts_code"
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(tsCode)
+    }
+
+    static func == (lhs: IndexItem, rhs: IndexItem) -> Bool {
+        lhs.tsCode == rhs.tsCode
     }
 }
 

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var isLoggedIn: Bool = AuthService.restoreSession() != nil
-    @State private var selectedTab = 1  // 默认选中行情 Tab
+    @State private var selectedTab = 0  // 默认选中首页 Tab
     @State private var autoLoginError: String?
 
     var body: some View {
@@ -42,25 +42,25 @@ struct ContentView: View {
 
             MarketView()
                 .tabItem {
-                    Label("行情", systemImage: "chart.line.uptrend.xyaxis")
+                    Label("市场", systemImage: "chart.line.uptrend.xyaxis")
                 }
                 .tag(1)
 
-            WidgetsView()
+            AICenterView()
                 .tabItem {
-                    Label("组件", systemImage: "square.grid.2x2")
+                    Label("AI", systemImage: "brain")
                 }
                 .tag(2)
 
-            APITestView()
+            WatchlistView()
                 .tabItem {
-                    Label("接口", systemImage: "network")
+                    Label("自选", systemImage: "star")
                 }
                 .tag(3)
 
             SettingsView(isLoggedIn: $isLoggedIn)
                 .tabItem {
-                    Label("设置", systemImage: "gear")
+                    Label("我的", systemImage: "person")
                 }
                 .tag(4)
         }

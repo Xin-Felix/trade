@@ -7,115 +7,109 @@ struct MarketView: View {
     @State private var isLoadingStocks = false
     @State private var selectedStock: StockBasicInfo?
     @State private var watchlistCodes: Set<String> = []
+    @State private var topListItems: [TopListItem] = []
+    @State private var isLoadingTopList = false
     @FocusState private var isSearchFieldFocused: Bool
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(.systemBackground)
-                    .ignoresSafeArea()
-
-                ScrollView {
-                    VStack(spacing: 16) {
-                        searchSection
-                        marketToolsSection
-                    }
-                    .padding()
+            ScrollView {
+                VStack(spacing: 24) {
+                    searchSection
+                    stockQuotesSection
+                    sectorCenterSection
+                    sectorCorrelationSection
+                    topListSection
+                    unusualMovesSection
                 }
+                .padding()
             }
-            .navigationTitle("行情")
+            .background(Color(.systemBackground).ignoresSafeArea())
+            .navigationTitle("市场")
             .refreshable {
                 await loadStockBasics()
+                await loadTopList()
                 watchlistCodes = Set(WatchlistService.load().map(\.code))
             }
             .task {
                 await loadStockBasics()
+                await loadTopList()
                 watchlistCodes = Set(WatchlistService.load().map(\.code))
             }
         }
     }
 
+    // MARK: - 搜索
+
     private var searchSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("股票搜索")
-                .font(.headline)
-                .foregroundStyle(.primary)
-
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 12) {
-                    TextField("输入股票代码或名称，如 000001 / 平安", text: $searchCode)
+            HStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                    TextField("搜索股票代码或名称", text: $searchCode)
                         .textInputAutocapitalization(.never)
                         .submitLabel(.search)
                         .focused($isSearchFieldFocused)
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        .foregroundStyle(.primary)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                    if isLoadingStocks {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                            .frame(width: 44, height: 44)
-                    }
                 }
+                .padding(12)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
 
-                if !searchCode.isEmpty {
-                    let suggestions = filteredStocks
+                if isLoadingStocks {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .frame(width: 36, height: 36)
+                }
+            }
 
-                    if !suggestions.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(suggestions.prefix(10)) { stock in
-                                HStack(spacing: 0) {
-                                    Button {
-                                        isSearchFieldFocused = false
-                                        selectedStock = stock
-                                        searchCode = ""
-                                        filteredStocks = []
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Text(stock.code)
-                                                .font(.subheadline)
-                                                .fontWeight(.semibold)
-                                                .foregroundStyle(.primary)
-
-                                            Text(stock.name)
-                                                .font(.subheadline)
-                                                .foregroundStyle(.secondary)
-
-                                            Spacer()
-                                        }
-                                        .padding()
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-
-                                    Button {
-                                        toggleWatchlist(stock: stock)
-                                    } label: {
-                                        Image(systemName: watchlistCodes.contains(stock.code) ? "star.fill" : "star")
+            if !searchCode.isEmpty {
+                let suggestions = filteredStocks
+                if !suggestions.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(suggestions.prefix(10)) { stock in
+                            HStack(spacing: 0) {
+                                Button {
+                                    isSearchFieldFocused = false
+                                    selectedStock = stock
+                                    searchCode = ""
+                                    filteredStocks = []
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Text(stock.code)
                                             .font(.subheadline)
-                                            .foregroundStyle(watchlistCodes.contains(stock.code) ? .yellow : .secondary)
-                                            .frame(width: 44, height: 44)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.primary)
+                                        Text(stock.name)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
                                     }
-                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .contentShape(Rectangle())
                                 }
-                                .background(Color(.secondarySystemBackground))
+                                .buttonStyle(.plain)
 
-                                if stock.id != suggestions.prefix(10).last?.id {
-                                    Divider()
-                                        .padding(.leading)
+                                Button {
+                                    toggleWatchlist(stock: stock)
+                                } label: {
+                                    Image(systemName: watchlistCodes.contains(stock.code) ? "star.fill" : "star")
+                                        .font(.subheadline)
+                                        .foregroundStyle(watchlistCodes.contains(stock.code) ? YPColor.warning : Color.gray)
+                                        .frame(width: 44, height: 44)
                                 }
+                                .buttonStyle(.plain)
+                            }
+
+                            if stock.id != suggestions.prefix(10).last?.id {
+                                Divider().padding(.leading, 14)
                             }
                         }
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .padding(.top, 4)
-                    } else if !isLoadingStocks {
-                        Text("未找到匹配的股票")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 8)
                     }
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
         }
@@ -127,10 +121,184 @@ struct MarketView: View {
         }
     }
 
-    private func loadStockBasics() async {
-        // 先读本地缓存展示，如果过期再去后台刷新
-        allStocks = StockListCacheService.load()
+    // MARK: - 股票行情
 
+    private var stockQuotesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeaderView(icon: "chart.line.uptrend.xyaxis", title: "股票行情", color: YPColor.accent)
+
+            VStack(spacing: 8) {
+                ForEach(0..<3) { _ in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            skeletonBar(width: 80, height: 14)
+                            skeletonBar(width: 60, height: 12)
+                        }
+                        Spacer()
+                        skeletonBar(width: 60, height: 16)
+                        skeletonBar(width: 50, height: 14)
+                    }
+                    .padding(14)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+    }
+
+    // MARK: - 板块中心
+
+    private var sectorCenterSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeaderView(icon: "square.grid.3x3", title: "板块中心", color: YPColor.ai)
+
+            NavigationLink {
+                SectorMoneyflowTrendView()
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "chart.pie.fill")
+                        .font(.title3)
+                        .foregroundStyle(YPColor.ai)
+                        .frame(width: 40, height: 40)
+                        .background(YPColor.ai.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("板块资金流向")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.primary)
+                        Text("查看行业/概念板块资金净流入排行")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.quaternary)
+                }
+                .padding(14)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
+    // MARK: - 板块关联分析
+
+    private var sectorCorrelationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeaderView(icon: "link", title: "板块关联分析", color: YPColor.info)
+            PlaceholderCard(icon: "link.circle", description: "分析板块之间的联动关系和资金轮动", color: YPColor.info)
+        }
+    }
+
+    // MARK: - 龙虎榜
+
+    private var topListSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeaderView(icon: "trophy", title: "龙虎榜", color: YPColor.warning)
+
+            if topListItems.isEmpty && !isLoadingTopList {
+                PlaceholderCard(icon: "trophy.circle", description: "暂无龙虎榜数据", color: YPColor.warning)
+            } else if isLoadingTopList {
+                VStack(spacing: 8) {
+                    ForEach(0..<3) { _ in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                skeletonBar(width: 80, height: 14)
+                                skeletonBar(width: 60, height: 12)
+                            }
+                            Spacer()
+                            skeletonBar(width: 60, height: 14)
+                        }
+                        .padding(12)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(topListItems.prefix(10)) { item in
+                        NavigationLink {
+                            StockDetailView(code: item.tsCode, name: item.name ?? item.tsCode)
+                        } label: {
+                            topListRow(item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func topListRow(_ item: TopListItem) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.name ?? item.tsCode)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(item.tsCode)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+
+            // 涨跌幅
+            if let pct = item.pctChange {
+                Text(String(format: "%+.2f%%", pct))
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(pct >= 0 ? YPColor.up : YPColor.down)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background((pct >= 0 ? YPColor.up : YPColor.down).opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+
+            // 净买入
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(item.netAmountFormatted)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle((item.netAmount ?? 0) >= 0 ? YPColor.up : YPColor.down)
+                Text("净买入")
+                    .font(.caption2)
+                    .foregroundStyle(.quaternary)
+            }
+            .frame(width: 65, alignment: .trailing)
+        }
+        .padding(12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: - 个股异动
+
+    private var unusualMovesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeaderView(icon: "bolt", title: "个股异动", color: YPColor.up)
+            PlaceholderCard(icon: "bolt.circle", description: "涨停、跌停、大单买入等异常变动", color: YPColor.up)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color(.tertiarySystemFill))
+            .frame(width: width, height: height)
+    }
+
+    // MARK: - 数据加载
+
+    private func loadStockBasics() async {
+        allStocks = StockListCacheService.load()
         guard StockListCacheService.shouldRefresh() else { return }
 
         isLoadingStocks = true
@@ -145,6 +313,17 @@ struct MarketView: View {
         }
     }
 
+    private func loadTopList() async {
+        isLoadingTopList = true
+        defer { isLoadingTopList = false }
+
+        do {
+            topListItems = try await MarketService.fetchTopList(limit: 15)
+        } catch {
+            print("[Market] 龙虎榜加载失败: \(error.localizedDescription)")
+        }
+    }
+
     private func filterStocksDebounced() async {
         let query = searchCode.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else {
@@ -152,7 +331,6 @@ struct MarketView: View {
             return
         }
 
-        // 简单防抖，避免快速输入时频繁过滤
         try? await Task.sleep(nanoseconds: 150_000_000)
 
         let lowercasedQuery = query.lowercased()
@@ -172,316 +350,6 @@ struct MarketView: View {
             WatchlistService.add(code: stock.code, name: stock.name)
             watchlistCodes.insert(stock.code)
         }
-    }
-
-    private var marketToolsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("市场工具")
-                .font(.headline)
-                .foregroundStyle(.primary)
-
-            NavigationLink {
-                SectorMoneyflowView()
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "chart.pie.fill")
-                        .font(.title2)
-                        .foregroundStyle(Color.accentColor)
-                        .frame(width: 44, height: 44)
-                        .background(Color.accentColor.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("板块资金流向")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-
-                        Text("查看行业/概念板块资金净流入排行")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding()
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-}
-
-// MARK: - 板块资金流向详情页
-
-struct SectorMoneyflowView: View {
-    @State private var selectedType: SectorMoneyflowType = .industry
-    @State private var selectedSort: SectorMoneyflowSort = .netAmount
-    @State private var selectedDate = Date()
-    @State private var sectors: [SectorMoneyflowData] = []
-    @State private var tradeDate: String = ""
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd"
-        return formatter
-    }()
-
-    var body: some View {
-        ZStack {
-            Color(.systemBackground)
-                .ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 16) {
-                    trendEntryLink
-                    typePicker
-                    datePicker
-                    sortPicker
-
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                            .font(.subheadline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-
-                    if isLoading && sectors.isEmpty {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
-                    } else {
-                        sectorsList
-                    }
-                }
-                .padding()
-            }
-        }
-        .navigationTitle("板块资金流向")
-        .navigationBarTitleDisplayMode(.large)
-        .task {
-            await loadSectorMoneyflow()
-        }
-        .onChange(of: selectedType) { _, _ in
-            Task { await loadSectorMoneyflow() }
-        }
-        .onChange(of: selectedSort) { _, _ in
-            Task { await loadSectorMoneyflow() }
-        }
-        .onChange(of: selectedDate) { _, _ in
-            Task { await loadSectorMoneyflow() }
-        }
-    }
-
-    private var trendEntryLink: some View {
-        NavigationLink {
-            SectorMoneyflowTrendView()
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.title3)
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 36, height: 36)
-                    .background(Color.accentColor.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("资金流动态趋势")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-
-                    Text("查看时间段内板块资金流向变化")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            .padding()
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var typePicker: some View {
-        Picker("板块类型", selection: $selectedType) {
-            Text("行业").tag(SectorMoneyflowType.industry)
-            Text("概念").tag(SectorMoneyflowType.concept)
-        }
-        .pickerStyle(.segmented)
-    }
-
-    private var datePicker: some View {
-        HStack {
-            Text("日期")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            DatePicker(
-                "",
-                selection: $selectedDate,
-                in: ...Date(),
-                displayedComponents: .date
-            )
-            .datePickerStyle(.compact)
-            .labelsHidden()
-            .frame(maxWidth: 120)
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var sortPicker: some View {
-        HStack {
-            Text("排序")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            Picker("排序", selection: $selectedSort) {
-                ForEach(SectorMoneyflowSort.allCases) { sort in
-                    Text(sort.title).tag(sort)
-                }
-            }
-            .pickerStyle(.menu)
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var sectorsList: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if !tradeDate.isEmpty {
-                HStack {
-                    Text("数据日期: \(formatTradeDate(tradeDate))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Text("共 \(sectors.count) 个板块")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            LazyVStack(spacing: 8) {
-                ForEach(sectors) { sector in
-                    SectorMoneyflowRow(sector: sector)
-                }
-            }
-        }
-    }
-
-    private func loadSectorMoneyflow() async {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-
-        do {
-            let response = try await StockService.fetchSectorMoneyflow(
-                sectorType: selectedType,
-                tradeDate: dateFormatter.string(from: selectedDate),
-                sortBy: selectedSort.rawValue,
-                limit: 50
-            )
-            sectors = response.sectors
-            tradeDate = response.tradeDate
-        } catch APIError.unauthorized {
-            errorMessage = "未登录，请重新登录"
-        } catch {
-            errorMessage = "加载失败: \(error.localizedDescription)"
-        }
-    }
-
-    private func formatTradeDate(_ dateString: String) -> String {
-        guard dateString.count == 8 else { return dateString }
-        let year = dateString.prefix(4)
-        let month = dateString.dropFirst(4).prefix(2)
-        let day = dateString.suffix(2)
-        return "\(year)-\(month)-\(day)"
-    }
-}
-
-enum SectorMoneyflowSort: String, CaseIterable, Identifiable {
-    case netAmount = "net_amount"
-    case pctChange = "pct_change"
-    case netAmountAsc = "net_amount_asc"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .netAmount: return "净流入 ↓"
-        case .pctChange: return "涨跌幅 ↓"
-        case .netAmountAsc: return "净流入 ↑"
-        }
-    }
-}
-
-struct SectorMoneyflowRow: View {
-    let sector: SectorMoneyflowData
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(sector.name ?? "未知板块")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.primary)
-
-                if let leadStock = sector.leadStock {
-                    Text("龙头: \(leadStock)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 4) {
-                if let netAmount = sector.netAmount {
-                    Text(String(format: "%.2f亿", netAmount))
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(netAmount >= 0 ? .red : .green)
-                }
-
-                if let pctChange = sector.pctChange {
-                    Text(String(format: "%.2f%%", pctChange))
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundStyle(pctChange >= 0 ? .red : .green)
-                }
-            }
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 

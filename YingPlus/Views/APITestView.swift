@@ -97,6 +97,146 @@ struct APITestView: View {
                     NavigationLink("自选股列表 GET /stocks/watchlist") {
                         APITestDetailView(test: .watchlist)
                     }
+                    NavigationLink("股票概念/题材 GET /stocks/concepts/{code}") {
+                        APITestDetailView(test: .stockConcepts)
+                    }
+                }
+
+                // MARK: - Tushare 代理接口
+
+                Section("财务数据 (Tushare)") {
+                    NavigationLink("财务指标 GET /ts/fina-indicator/{code}") {
+                        APITestDetailView(test: .tsFinaIndicator)
+                    }
+                    NavigationLink("利润表 GET /ts/income/{code}") {
+                        APITestDetailView(test: .tsIncome)
+                    }
+                    NavigationLink("资产负债表 GET /ts/balancesheet/{code}") {
+                        APITestDetailView(test: .tsBalancesheet)
+                    }
+                    NavigationLink("现金流量表 GET /ts/cashflow/{code}") {
+                        APITestDetailView(test: .tsCashflow)
+                    }
+                    NavigationLink("业绩预告 GET /ts/forecast/{code}") {
+                        APITestDetailView(test: .tsForecast)
+                    }
+                    NavigationLink("业绩快报 GET /ts/express/{code}") {
+                        APITestDetailView(test: .tsExpress)
+                    }
+                    NavigationLink("分红送股 GET /ts/dividend/{code}") {
+                        APITestDetailView(test: .tsDividend)
+                    }
+                }
+
+                Section("股东数据 (Tushare)") {
+                    NavigationLink("股东人数 GET /ts/holder-number/{code}") {
+                        APITestDetailView(test: .tsHolderNumber)
+                    }
+                    NavigationLink("股东增减持 GET /ts/holder-trade/{code}") {
+                        APITestDetailView(test: .tsHolderTrade)
+                    }
+                    NavigationLink("股权质押 GET /ts/pledge-stat/{code}") {
+                        APITestDetailView(test: .tsPledgeStat)
+                    }
+                    NavigationLink("股票回购 GET /ts/repurchase/{code}") {
+                        APITestDetailView(test: .tsRepurchase)
+                    }
+                }
+
+                Section("交易数据 (Tushare)") {
+                    NavigationLink("融资融券明细 GET /ts/margin/{code}") {
+                        APITestDetailView(test: .tsMargin)
+                    }
+                    NavigationLink("融资融券汇总 GET /ts/margin-summary") {
+                        APITestDetailView(test: .tsMarginSummary)
+                    }
+                    NavigationLink("大宗交易 GET /ts/block-trade") {
+                        APITestDetailView(test: .tsBlockTrade)
+                    }
+                    NavigationLink("涨跌停统计 GET /ts/limit-list") {
+                        APITestDetailView(test: .tsLimitList)
+                    }
+                }
+
+                Section("技术面 (Tushare)") {
+                    NavigationLink("技术因子 GET /ts/stk-factor/{code}") {
+                        APITestDetailView(test: .tsStkFactor)
+                    }
+                    NavigationLink("筹码分布 GET /ts/cyq-perf/{code}") {
+                        APITestDetailView(test: .tsCyqPerf)
+                    }
+                    NavigationLink("前复权行情 GET /ts/daily-adj/{code}") {
+                        APITestDetailView(test: .tsDailyAdj)
+                    }
+                    NavigationLink("复权因子 GET /ts/adj-factor/{code}") {
+                        APITestDetailView(test: .tsAdjFactor)
+                    }
+                    NavigationLink("停复牌 GET /ts/suspend/{code}") {
+                        APITestDetailView(test: .tsSuspend)
+                    }
+                }
+
+                Section("概念板块 (Tushare)") {
+                    NavigationLink("概念列表 GET /ts/concept") {
+                        APITestDetailView(test: .tsConcept)
+                    }
+                    NavigationLink("概念成分股 GET /ts/concept-detail/{id}") {
+                        APITestDetailView(test: .tsConceptDetail)
+                    }
+                    NavigationLink("指数权重 GET /ts/index-weight/{code}") {
+                        APITestDetailView(test: .tsIndexWeight)
+                    }
+                }
+
+                Section("ETF基金 (Tushare)") {
+                    NavigationLink("基金列表 GET /ts/fund-basic") {
+                        APITestDetailView(test: .tsFundBasic)
+                    }
+                    NavigationLink("基金日线 GET /ts/fund-daily/{code}") {
+                        APITestDetailView(test: .tsFundDaily)
+                    }
+                    NavigationLink("基金净值 GET /ts/fund-nav/{code}") {
+                        APITestDetailView(test: .tsFundNav)
+                    }
+                }
+
+                Section("新闻/日历 (Tushare)") {
+                    NavigationLink("新闻快讯 GET /ts/news") {
+                        APITestDetailView(test: .tsNews)
+                    }
+                    NavigationLink("交易日历 GET /ts/trade-cal") {
+                        APITestDetailView(test: .tsTradeCal)
+                    }
+                }
+
+                Section("数据同步") {
+                    NavigationLink("增量同步 POST /sync/recent") {
+                        APITestDetailView(test: .syncRecent)
+                    }
+                    NavigationLink("日K线同步 POST /sync/daily-kline") {
+                        APITestDetailView(test: .syncDailyKline)
+                    }
+                    NavigationLink("日线因子同步 POST /sync/daily-basic") {
+                        APITestDetailView(test: .syncDailyBasic)
+                    }
+                    NavigationLink("板块资金流同步 POST /sync/sector-moneyflow") {
+                        APITestDetailView(test: .syncSectorMoneyflow)
+                    }
+                    NavigationLink("个股资金流同步 POST /sync/stock-moneyflow") {
+                        APITestDetailView(test: .syncStockMoneyflow)
+                    }
+                    NavigationLink("指数日线同步 POST /sync/index-daily") {
+                        APITestDetailView(test: .syncIndexDaily)
+                    }
+                    NavigationLink("沪深港通同步 POST /sync/hsgt") {
+                        APITestDetailView(test: .syncHsgt)
+                    }
+                    NavigationLink("涨跌停同步 POST /sync/stock-limit") {
+                        APITestDetailView(test: .syncStockLimit)
+                    }
+                    NavigationLink("概念板块同步 POST /sync/concept") {
+                        APITestDetailView(test: .syncConcept)
+                    }
                 }
 
                 Section("天气") {
@@ -113,11 +253,14 @@ struct APITestView: View {
 // MARK: - 测试用例枚举
 
 enum APITestCase: String {
+    // 基础
     case healthRoot
     case healthCheck
+    // 认证
     case testLogin
     case sendEmailCode
     case verifyEmailCode
+    // 股票行情
     case stockQuote
     case stockKlines
     case intradayKlines
@@ -127,16 +270,67 @@ enum APITestCase: String {
     case stockBasics
     case dailyBasic
     case stockLimit
+    // 资金流
     case sectorMoneyflow
     case sectorMoneyflowTrend
     case stockMoneyflow
     case moneyflowHsgt
+    // 龙虎榜
     case topList
     case topInst
+    // THS
     case thsIndex
     case thsDaily
     case thsMember
+    // 自选
     case watchlist
+    case stockConcepts
+    // Tushare 代理 - 财务
+    case tsFinaIndicator
+    case tsIncome
+    case tsBalancesheet
+    case tsCashflow
+    case tsForecast
+    case tsExpress
+    case tsDividend
+    // Tushare 代理 - 股东
+    case tsHolderNumber
+    case tsHolderTrade
+    case tsPledgeStat
+    case tsRepurchase
+    // Tushare 代理 - 交易
+    case tsMargin
+    case tsMarginSummary
+    case tsBlockTrade
+    case tsLimitList
+    // Tushare 代理 - 技术面
+    case tsStkFactor
+    case tsCyqPerf
+    case tsDailyAdj
+    case tsAdjFactor
+    case tsSuspend
+    // Tushare 代理 - 概念板块
+    case tsConcept
+    case tsConceptDetail
+    case tsIndexWeight
+    // Tushare 代理 - ETF
+    case tsFundBasic
+    case tsFundDaily
+    case tsFundNav
+    // Tushare 代理 - 新闻/日历
+    case tsNews
+    case tsTradeCal
+    // 数据同步
+    case syncRecent
+    case syncDailyKline
+    case syncDailyBasic
+    case syncSectorMoneyflow
+    case syncStockMoneyflow
+    case syncIndexDaily
+    case syncHsgt
+    case syncStockLimit
+    case syncConcept
+    // 天气
     case weatherBeijing
 
     var title: String {
@@ -165,13 +359,54 @@ enum APITestCase: String {
         case .thsDaily: return "同花顺指数日线"
         case .thsMember: return "同花顺成分股"
         case .watchlist: return "自选股列表"
+        case .stockConcepts: return "股票概念/题材"
+        case .tsFinaIndicator: return "财务指标"
+        case .tsIncome: return "利润表"
+        case .tsBalancesheet: return "资产负债表"
+        case .tsCashflow: return "现金流量表"
+        case .tsForecast: return "业绩预告"
+        case .tsExpress: return "业绩快报"
+        case .tsDividend: return "分红送股"
+        case .tsHolderNumber: return "股东人数"
+        case .tsHolderTrade: return "股东增减持"
+        case .tsPledgeStat: return "股权质押"
+        case .tsRepurchase: return "股票回购"
+        case .tsMargin: return "融资融券明细"
+        case .tsMarginSummary: return "融资融券汇总"
+        case .tsBlockTrade: return "大宗交易"
+        case .tsLimitList: return "涨跌停统计"
+        case .tsStkFactor: return "技术因子"
+        case .tsCyqPerf: return "筹码分布"
+        case .tsDailyAdj: return "前复权行情"
+        case .tsAdjFactor: return "复权因子"
+        case .tsSuspend: return "停复牌"
+        case .tsConcept: return "概念列表"
+        case .tsConceptDetail: return "概念成分股"
+        case .tsIndexWeight: return "指数权重"
+        case .tsFundBasic: return "基金列表"
+        case .tsFundDaily: return "基金日线"
+        case .tsFundNav: return "基金净值"
+        case .tsNews: return "新闻快讯"
+        case .tsTradeCal: return "交易日历"
+        case .syncRecent: return "增量同步"
+        case .syncDailyKline: return "日K线同步"
+        case .syncDailyBasic: return "日线因子同步"
+        case .syncSectorMoneyflow: return "板块资金流同步"
+        case .syncStockMoneyflow: return "个股资金流同步"
+        case .syncIndexDaily: return "指数日线同步"
+        case .syncHsgt: return "沪深港通同步"
+        case .syncStockLimit: return "涨跌停同步"
+        case .syncConcept: return "概念板块同步"
         case .weatherBeijing: return "北京天气"
         }
     }
 
     var method: String {
         switch self {
-        case .testLogin, .sendEmailCode, .verifyEmailCode:
+        case .testLogin, .sendEmailCode, .verifyEmailCode,
+             .syncRecent, .syncDailyKline, .syncDailyBasic,
+             .syncSectorMoneyflow, .syncStockMoneyflow,
+             .syncIndexDaily, .syncHsgt, .syncStockLimit, .syncConcept:
             return "POST"
         default:
             return "GET"
@@ -393,8 +628,12 @@ struct APITestDetailView: View {
 
     private func setupParams() {
         switch test {
-        case .healthRoot, .healthCheck, .stockIndices, .watchlist, .weatherBeijing, .stockBasics:
+        case .healthRoot, .healthCheck, .stockIndices, .watchlist, .weatherBeijing, .stockBasics, .syncConcept:
             params = []
+        case .stockConcepts:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true)
+            ]
         case .testLogin:
             params = [
                 APITestParam(key: "email", placeholder: "1538933906@qq.com", value: "1538933906@qq.com", isRequired: true),
@@ -497,6 +736,209 @@ struct APITestDetailView: View {
                 APITestParam(key: "code", placeholder: "885760.TI", value: "885760.TI", isRequired: true),
                 APITestParam(key: "limit", placeholder: "1000", value: "20", isRequired: false)
             ]
+        // Tushare 代理 - 财务
+        case .tsFinaIndicator:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "8", value: "4", isRequired: false)
+            ]
+        case .tsIncome:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "8", value: "4", isRequired: false)
+            ]
+        case .tsBalancesheet:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "8", value: "4", isRequired: false)
+            ]
+        case .tsCashflow:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "8", value: "4", isRequired: false)
+            ]
+        case .tsForecast:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "5", value: "5", isRequired: false)
+            ]
+        case .tsExpress:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "5", value: "5", isRequired: false)
+            ]
+        case .tsDividend:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "10", value: "5", isRequired: false)
+            ]
+        // Tushare 代理 - 股东
+        case .tsHolderNumber:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "10", value: "5", isRequired: false)
+            ]
+        case .tsHolderTrade:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "20", value: "10", isRequired: false)
+            ]
+        case .tsPledgeStat:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "10", value: "5", isRequired: false)
+            ]
+        case .tsRepurchase:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "20", value: "10", isRequired: false)
+            ]
+        // Tushare 代理 - 交易
+        case .tsMargin:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "start_date", placeholder: "YYYYMMDD", value: recentStartDate(), isRequired: false),
+                APITestParam(key: "end_date", placeholder: "YYYYMMDD", value: todayDate(), isRequired: false),
+                APITestParam(key: "limit", placeholder: "30", value: "10", isRequired: false)
+            ]
+        case .tsMarginSummary:
+            params = [
+                APITestParam(key: "trade_date", placeholder: "YYYYMMDD", value: todayDate(), isRequired: false),
+                APITestParam(key: "start_date", placeholder: "YYYYMMDD", value: "", isRequired: false),
+                APITestParam(key: "end_date", placeholder: "YYYYMMDD", value: "", isRequired: false),
+                APITestParam(key: "limit", placeholder: "30", value: "10", isRequired: false)
+            ]
+        case .tsBlockTrade:
+            params = [
+                APITestParam(key: "code", placeholder: "股票代码（可选）", value: "", isRequired: false),
+                APITestParam(key: "trade_date", placeholder: "YYYYMMDD", value: todayDate(), isRequired: false),
+                APITestParam(key: "start_date", placeholder: "YYYYMMDD", value: "", isRequired: false),
+                APITestParam(key: "end_date", placeholder: "YYYYMMDD", value: "", isRequired: false),
+                APITestParam(key: "limit", placeholder: "50", value: "20", isRequired: false)
+            ]
+        case .tsLimitList:
+            params = [
+                APITestParam(key: "trade_date", placeholder: "YYYYMMDD", value: todayDate(), isRequired: false),
+                APITestParam(key: "limit_type", placeholder: "U涨停/D跌停/Z炸板", value: "U", isRequired: false),
+                APITestParam(key: "limit", placeholder: "100", value: "30", isRequired: false)
+            ]
+        // Tushare 代理 - 技术面
+        case .tsStkFactor:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "start_date", placeholder: "YYYYMMDD", value: recentStartDate(), isRequired: false),
+                APITestParam(key: "end_date", placeholder: "YYYYMMDD", value: todayDate(), isRequired: false),
+                APITestParam(key: "limit", placeholder: "30", value: "10", isRequired: false)
+            ]
+        case .tsCyqPerf:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "start_date", placeholder: "YYYYMMDD", value: recentStartDate(), isRequired: false),
+                APITestParam(key: "end_date", placeholder: "YYYYMMDD", value: todayDate(), isRequired: false),
+                APITestParam(key: "limit", placeholder: "30", value: "10", isRequired: false)
+            ]
+        case .tsDailyAdj:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "start_date", placeholder: "YYYYMMDD", value: recentStartDate(), isRequired: false),
+                APITestParam(key: "end_date", placeholder: "YYYYMMDD", value: todayDate(), isRequired: false),
+                APITestParam(key: "limit", placeholder: "60", value: "30", isRequired: false)
+            ]
+        case .tsAdjFactor:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "limit", placeholder: "30", value: "10", isRequired: false)
+            ]
+        case .tsSuspend:
+            params = [
+                APITestParam(key: "code", placeholder: "000001", value: "000001", isRequired: true),
+                APITestParam(key: "start_date", placeholder: "YYYYMMDD", value: "", isRequired: false),
+                APITestParam(key: "end_date", placeholder: "YYYYMMDD", value: "", isRequired: false),
+                APITestParam(key: "limit", placeholder: "30", value: "10", isRequired: false)
+            ]
+        // Tushare 代理 - 概念板块
+        case .tsConcept:
+            params = [
+                APITestParam(key: "limit", placeholder: "500", value: "30", isRequired: false)
+            ]
+        case .tsConceptDetail:
+            params = [
+                APITestParam(key: "concept_id", placeholder: "885760.TI", value: "885760.TI", isRequired: true),
+                APITestParam(key: "limit", placeholder: "200", value: "20", isRequired: false)
+            ]
+        case .tsIndexWeight:
+            params = [
+                APITestParam(key: "code", placeholder: "000300.SH", value: "000300.SH", isRequired: true),
+                APITestParam(key: "trade_date", placeholder: "YYYYMMDD", value: "", isRequired: false),
+                APITestParam(key: "limit", placeholder: "100", value: "30", isRequired: false)
+            ]
+        // Tushare 代理 - ETF
+        case .tsFundBasic:
+            params = [
+                APITestParam(key: "market", placeholder: "E场内/O场外", value: "E", isRequired: false),
+                APITestParam(key: "limit", placeholder: "100", value: "30", isRequired: false)
+            ]
+        case .tsFundDaily:
+            params = [
+                APITestParam(key: "code", placeholder: "510300.SH", value: "510300.SH", isRequired: true),
+                APITestParam(key: "start_date", placeholder: "YYYYMMDD", value: recentStartDate(), isRequired: false),
+                APITestParam(key: "end_date", placeholder: "YYYYMMDD", value: todayDate(), isRequired: false),
+                APITestParam(key: "limit", placeholder: "30", value: "30", isRequired: false)
+            ]
+        case .tsFundNav:
+            params = [
+                APITestParam(key: "code", placeholder: "510300.SH", value: "510300.SH", isRequired: true),
+                APITestParam(key: "limit", placeholder: "30", value: "10", isRequired: false)
+            ]
+        // Tushare 代理 - 新闻/日历
+        case .tsNews:
+            params = [
+                APITestParam(key: "src", placeholder: "sina/wallstreetcn/10jqka/eastmoney", value: "sina", isRequired: false),
+                APITestParam(key: "start_date", placeholder: "YYYY-MM-DD HH:MM:SS", value: "", isRequired: false),
+                APITestParam(key: "end_date", placeholder: "YYYY-MM-DD HH:MM:SS", value: "", isRequired: false),
+                APITestParam(key: "limit", placeholder: "50", value: "20", isRequired: false)
+            ]
+        case .tsTradeCal:
+            params = [
+                APITestParam(key: "start_date", placeholder: "YYYYMMDD", value: todayDate(), isRequired: false),
+                APITestParam(key: "end_date", placeholder: "YYYYMMDD", value: "", isRequired: false),
+                APITestParam(key: "is_open", placeholder: "0休市/1交易/留空全部", value: "", isRequired: false),
+                APITestParam(key: "limit", placeholder: "60", value: "30", isRequired: false)
+            ]
+        // 数据同步
+        case .syncRecent:
+            params = [
+                APITestParam(key: "days", placeholder: "3", value: "3", isRequired: false)
+            ]
+        case .syncDailyKline:
+            params = [
+                APITestParam(key: "days", placeholder: "1", value: "1", isRequired: false)
+            ]
+        case .syncDailyBasic:
+            params = [
+                APITestParam(key: "days", placeholder: "1", value: "1", isRequired: false)
+            ]
+        case .syncSectorMoneyflow:
+            params = [
+                APITestParam(key: "sector_type", placeholder: "industry/concept", value: "industry", isRequired: false),
+                APITestParam(key: "days", placeholder: "3", value: "3", isRequired: false)
+            ]
+        case .syncStockMoneyflow:
+            params = [
+                APITestParam(key: "days", placeholder: "3", value: "3", isRequired: false)
+            ]
+        case .syncIndexDaily:
+            params = [
+                APITestParam(key: "days", placeholder: "3", value: "3", isRequired: false)
+            ]
+        case .syncHsgt:
+            params = [
+                APITestParam(key: "days", placeholder: "3", value: "3", isRequired: false)
+            ]
+        case .syncStockLimit:
+            params = [
+                APITestParam(key: "days", placeholder: "3", value: "3", isRequired: false)
+            ]
         }
         updateRequestURL()
     }
@@ -575,134 +1017,128 @@ struct APITestDetailView: View {
         case .stockQuote:
             urlString = baseURL + "/stocks/quote/\(paramValue("code"))"
         case .stockKlines:
-            var components = URLComponents(string: baseURL + "/stocks/klines/\(paramValue("code"))")!
-            var queryItems: [URLQueryItem] = []
-            let period = paramValue("period")
-            if !period.isEmpty { queryItems.append(URLQueryItem(name: "period", value: period)) }
-            let limit = paramValue("limit")
-            if !limit.isEmpty { queryItems.append(URLQueryItem(name: "limit", value: limit)) }
-            if !queryItems.isEmpty { components.queryItems = queryItems }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/klines/\(paramValue("code"))", queryKeys: ["period", "limit"])
         case .intradayKlines:
-            var components = URLComponents(string: baseURL + "/stocks/intraday/\(paramValue("code"))")!
-            var queryItems: [URLQueryItem] = []
-            let period = paramValue("period")
-            if !period.isEmpty { queryItems.append(URLQueryItem(name: "period", value: period)) }
-            let limit = paramValue("limit")
-            if !limit.isEmpty { queryItems.append(URLQueryItem(name: "limit", value: limit)) }
-            if !queryItems.isEmpty { components.queryItems = queryItems }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/intraday/\(paramValue("code"))", queryKeys: ["period", "limit"])
         case .stockIndices:
             urlString = baseURL + "/stocks/indices"
         case .indexDaily:
-            var components = URLComponents(string: baseURL + "/stocks/index-daily/\(paramValue("code"))")!
-            let limit = paramValue("limit")
-            if !limit.isEmpty { components.queryItems = [URLQueryItem(name: "limit", value: limit)] }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/index-daily/\(paramValue("code"))", queryKeys: ["limit"])
         case .stockSearch:
-            var components = URLComponents(string: baseURL + "/stocks/search")!
-            var queryItems: [URLQueryItem] = []
-            let q = paramValue("q")
-            if !q.isEmpty { queryItems.append(URLQueryItem(name: "q", value: q)) }
-            let limit = paramValue("limit")
-            if !limit.isEmpty { queryItems.append(URLQueryItem(name: "limit", value: limit)) }
-            if !queryItems.isEmpty { components.queryItems = queryItems }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/search", queryKeys: ["q", "limit"])
         case .stockBasics:
             urlString = baseURL + "/stocks/basics"
         case .dailyBasic:
-            var components = URLComponents(string: baseURL + "/stocks/daily-basic/\(paramValue("code"))")!
-            let limit = paramValue("limit")
-            if !limit.isEmpty { components.queryItems = [URLQueryItem(name: "limit", value: limit)] }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/daily-basic/\(paramValue("code"))", queryKeys: ["limit"])
         case .stockLimit:
-            var components = URLComponents(string: baseURL + "/stocks/stock-limit")!
-            var queryItems: [URLQueryItem] = []
-            let tradeDate = paramValue("trade_date")
-            if !tradeDate.isEmpty { queryItems.append(URLQueryItem(name: "trade_date", value: tradeDate)) }
-            let limit = paramValue("limit")
-            if !limit.isEmpty { queryItems.append(URLQueryItem(name: "limit", value: limit)) }
-            if !queryItems.isEmpty { components.queryItems = queryItems }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/stock-limit", queryKeys: ["trade_date", "limit"])
         case .sectorMoneyflow:
-            var components = URLComponents(string: baseURL + "/stocks/sector-moneyflow")!
-            var queryItems: [URLQueryItem] = []
-            let sectorType = paramValue("sector_type")
-            if !sectorType.isEmpty { queryItems.append(URLQueryItem(name: "sector_type", value: sectorType)) }
-            let tradeDate = paramValue("trade_date")
-            if !tradeDate.isEmpty { queryItems.append(URLQueryItem(name: "trade_date", value: tradeDate)) }
-            let sortBy = paramValue("sort_by")
-            if !sortBy.isEmpty { queryItems.append(URLQueryItem(name: "sort_by", value: sortBy)) }
-            let limit = paramValue("limit")
-            if !limit.isEmpty { queryItems.append(URLQueryItem(name: "limit", value: limit)) }
-            if !queryItems.isEmpty { components.queryItems = queryItems }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/sector-moneyflow", queryKeys: ["sector_type", "trade_date", "sort_by", "limit"])
         case .sectorMoneyflowTrend:
-            var components = URLComponents(string: baseURL + "/stocks/sector-moneyflow/trend")!
-            var queryItems: [URLQueryItem] = []
-            let sectorType = paramValue("sector_type")
-            if !sectorType.isEmpty { queryItems.append(URLQueryItem(name: "sector_type", value: sectorType)) }
-            let startDate = paramValue("start_date")
-            if !startDate.isEmpty { queryItems.append(URLQueryItem(name: "start_date", value: startDate)) }
-            let endDate = paramValue("end_date")
-            if !endDate.isEmpty { queryItems.append(URLQueryItem(name: "end_date", value: endDate)) }
-            let topN = paramValue("top_n")
-            if !topN.isEmpty { queryItems.append(URLQueryItem(name: "top_n", value: topN)) }
-            if !queryItems.isEmpty { components.queryItems = queryItems }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/sector-moneyflow/trend", queryKeys: ["sector_type", "start_date", "end_date", "top_n"])
         case .stockMoneyflow:
-            var components = URLComponents(string: baseURL + "/stocks/moneyflow/\(paramValue("code"))")!
-            let limit = paramValue("limit")
-            if !limit.isEmpty { components.queryItems = [URLQueryItem(name: "limit", value: limit)] }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/moneyflow/\(paramValue("code"))", queryKeys: ["limit"])
         case .moneyflowHsgt:
-            var components = URLComponents(string: baseURL + "/stocks/moneyflow-hsgt")!
-            var queryItems: [URLQueryItem] = []
-            let startDate = paramValue("start_date")
-            if !startDate.isEmpty { queryItems.append(URLQueryItem(name: "start_date", value: startDate)) }
-            let endDate = paramValue("end_date")
-            if !endDate.isEmpty { queryItems.append(URLQueryItem(name: "end_date", value: endDate)) }
-            let limit = paramValue("limit")
-            if !limit.isEmpty { queryItems.append(URLQueryItem(name: "limit", value: limit)) }
-            if !queryItems.isEmpty { components.queryItems = queryItems }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/moneyflow-hsgt", queryKeys: ["start_date", "end_date", "limit"])
         case .topList:
-            var components = URLComponents(string: baseURL + "/stocks/top-list")!
-            var queryItems: [URLQueryItem] = []
-            let tradeDate = paramValue("trade_date")
-            if !tradeDate.isEmpty { queryItems.append(URLQueryItem(name: "trade_date", value: tradeDate)) }
-            let limit = paramValue("limit")
-            if !limit.isEmpty { queryItems.append(URLQueryItem(name: "limit", value: limit)) }
-            if !queryItems.isEmpty { components.queryItems = queryItems }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/top-list", queryKeys: ["trade_date", "limit"])
         case .topInst:
-            var components = URLComponents(string: baseURL + "/stocks/top-inst")!
-            var queryItems: [URLQueryItem] = []
-            let tradeDate = paramValue("trade_date")
-            if !tradeDate.isEmpty { queryItems.append(URLQueryItem(name: "trade_date", value: tradeDate)) }
-            let code = paramValue("code")
-            if !code.isEmpty { queryItems.append(URLQueryItem(name: "code", value: code)) }
-            let limit = paramValue("limit")
-            if !limit.isEmpty { queryItems.append(URLQueryItem(name: "limit", value: limit)) }
-            if !queryItems.isEmpty { components.queryItems = queryItems }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/top-inst", queryKeys: ["trade_date", "code", "limit"])
         case .thsIndex:
-            var components = URLComponents(string: baseURL + "/stocks/ths-index")!
-            let limit = paramValue("limit")
-            if !limit.isEmpty { components.queryItems = [URLQueryItem(name: "limit", value: limit)] }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/ths-index", queryKeys: ["limit"])
         case .thsDaily:
-            var components = URLComponents(string: baseURL + "/stocks/ths-daily/\(paramValue("code"))")!
-            let limit = paramValue("limit")
-            if !limit.isEmpty { components.queryItems = [URLQueryItem(name: "limit", value: limit)] }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/ths-daily/\(paramValue("code"))", queryKeys: ["limit"])
         case .thsMember:
-            var components = URLComponents(string: baseURL + "/stocks/ths-member/\(paramValue("code"))")!
-            let limit = paramValue("limit")
-            if !limit.isEmpty { components.queryItems = [URLQueryItem(name: "limit", value: limit)] }
-            urlString = components.url?.absoluteString ?? ""
+            urlString = buildURL(baseURL + "/stocks/ths-member/\(paramValue("code"))", queryKeys: ["limit"])
         case .watchlist:
             urlString = baseURL + "/stocks/watchlist"
+        case .stockConcepts:
+            urlString = baseURL + "/stocks/concepts/\(paramValue("code"))"
+        // Tushare 代理
+        case .tsFinaIndicator:
+            urlString = buildURL(baseURL + "/ts/fina-indicator/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsIncome:
+            urlString = buildURL(baseURL + "/ts/income/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsBalancesheet:
+            urlString = buildURL(baseURL + "/ts/balancesheet/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsCashflow:
+            urlString = buildURL(baseURL + "/ts/cashflow/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsForecast:
+            urlString = buildURL(baseURL + "/ts/forecast/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsExpress:
+            urlString = buildURL(baseURL + "/ts/express/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsDividend:
+            urlString = buildURL(baseURL + "/ts/dividend/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsHolderNumber:
+            urlString = buildURL(baseURL + "/ts/holder-number/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsHolderTrade:
+            urlString = buildURL(baseURL + "/ts/holder-trade/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsPledgeStat:
+            urlString = buildURL(baseURL + "/ts/pledge-stat/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsRepurchase:
+            urlString = buildURL(baseURL + "/ts/repurchase/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsMargin:
+            urlString = buildURL(baseURL + "/ts/margin/\(paramValue("code"))", queryKeys: ["start_date", "end_date", "limit"])
+        case .tsMarginSummary:
+            urlString = buildURL(baseURL + "/ts/margin-summary", queryKeys: ["trade_date", "start_date", "end_date", "limit"])
+        case .tsBlockTrade:
+            urlString = buildURL(baseURL + "/ts/block-trade", queryKeys: ["code", "trade_date", "start_date", "end_date", "limit"])
+        case .tsLimitList:
+            urlString = buildURL(baseURL + "/ts/limit-list", queryKeys: ["trade_date", "limit_type", "limit"])
+        case .tsStkFactor:
+            urlString = buildURL(baseURL + "/ts/stk-factor/\(paramValue("code"))", queryKeys: ["start_date", "end_date", "limit"])
+        case .tsCyqPerf:
+            urlString = buildURL(baseURL + "/ts/cyq-perf/\(paramValue("code"))", queryKeys: ["start_date", "end_date", "limit"])
+        case .tsDailyAdj:
+            urlString = buildURL(baseURL + "/ts/daily-adj/\(paramValue("code"))", queryKeys: ["start_date", "end_date", "limit"])
+        case .tsAdjFactor:
+            urlString = buildURL(baseURL + "/ts/adj-factor/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsSuspend:
+            urlString = buildURL(baseURL + "/ts/suspend/\(paramValue("code"))", queryKeys: ["start_date", "end_date", "limit"])
+        case .tsConcept:
+            urlString = buildURL(baseURL + "/ts/concept", queryKeys: ["limit"])
+        case .tsConceptDetail:
+            urlString = buildURL(baseURL + "/ts/concept-detail/\(paramValue("concept_id"))", queryKeys: ["limit"])
+        case .tsIndexWeight:
+            urlString = buildURL(baseURL + "/ts/index-weight/\(paramValue("code"))", queryKeys: ["trade_date", "limit"])
+        case .tsFundBasic:
+            urlString = buildURL(baseURL + "/ts/fund-basic", queryKeys: ["market", "limit"])
+        case .tsFundDaily:
+            urlString = buildURL(baseURL + "/ts/fund-daily/\(paramValue("code"))", queryKeys: ["start_date", "end_date", "limit"])
+        case .tsFundNav:
+            urlString = buildURL(baseURL + "/ts/fund-nav/\(paramValue("code"))", queryKeys: ["limit"])
+        case .tsNews:
+            urlString = buildURL(baseURL + "/ts/news", queryKeys: ["src", "start_date", "end_date", "limit"])
+        case .tsTradeCal:
+            urlString = buildURL(baseURL + "/ts/trade-cal", queryKeys: ["start_date", "end_date", "is_open", "limit"])
+        // 数据同步
+        case .syncRecent:
+            urlString = buildURL(baseURL + "/sync/recent", queryKeys: ["days"])
+            httpMethod = "POST"
+        case .syncDailyKline:
+            urlString = buildURL(baseURL + "/sync/daily-kline", queryKeys: ["days"])
+            httpMethod = "POST"
+        case .syncDailyBasic:
+            urlString = buildURL(baseURL + "/sync/daily-basic", queryKeys: ["days"])
+            httpMethod = "POST"
+        case .syncSectorMoneyflow:
+            urlString = buildURL(baseURL + "/sync/sector-moneyflow", queryKeys: ["sector_type", "days"])
+            httpMethod = "POST"
+        case .syncStockMoneyflow:
+            urlString = buildURL(baseURL + "/sync/stock-moneyflow", queryKeys: ["days"])
+            httpMethod = "POST"
+        case .syncIndexDaily:
+            urlString = buildURL(baseURL + "/sync/index-daily", queryKeys: ["days"])
+            httpMethod = "POST"
+        case .syncHsgt:
+            urlString = buildURL(baseURL + "/sync/hsgt", queryKeys: ["days"])
+            httpMethod = "POST"
+        case .syncStockLimit:
+            urlString = buildURL(baseURL + "/sync/stock-limit", queryKeys: ["days"])
+            httpMethod = "POST"
+        case .syncConcept:
+            urlString = baseURL + "/sync/concept"
+            httpMethod = "POST"
         case .weatherBeijing:
             urlString = baseURL + "/weather/beijing"
         }
@@ -732,11 +1168,28 @@ struct APITestDetailView: View {
 
     // MARK: - Helpers
 
+    /// 构建带 query 参数的 URL，自动跳过空值
+    private func buildURL(_ base: String, queryKeys: [String]) -> String {
+        var components = URLComponents(string: base)!
+        var queryItems: [URLQueryItem] = []
+        for key in queryKeys {
+            let value = paramValue(key)
+            if !value.isEmpty {
+                queryItems.append(URLQueryItem(name: key, value: value))
+            }
+        }
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        return components.url?.absoluteString ?? base
+    }
+
     private func paramValue(_ key: String) -> String {
         params.first(where: { $0.key == key })?.value.trimmingCharacters(in: .whitespaces) ?? ""
     }
 
     private func updateRequestURL() {
+        // 简单展示当前 URL（用于 info section 显示）
         let baseURL = APIConfiguration.shared.apiV1URL
         switch test {
         case .healthRoot:
@@ -787,6 +1240,84 @@ struct APITestDetailView: View {
             requestURL = baseURL + "/stocks/ths-member/\(paramValue("code"))"
         case .watchlist:
             requestURL = baseURL + "/stocks/watchlist"
+        case .stockConcepts:
+            requestURL = baseURL + "/stocks/concepts/\(paramValue("code"))"
+        // Tushare 代理
+        case .tsFinaIndicator:
+            requestURL = baseURL + "/ts/fina-indicator/\(paramValue("code"))"
+        case .tsIncome:
+            requestURL = baseURL + "/ts/income/\(paramValue("code"))"
+        case .tsBalancesheet:
+            requestURL = baseURL + "/ts/balancesheet/\(paramValue("code"))"
+        case .tsCashflow:
+            requestURL = baseURL + "/ts/cashflow/\(paramValue("code"))"
+        case .tsForecast:
+            requestURL = baseURL + "/ts/forecast/\(paramValue("code"))"
+        case .tsExpress:
+            requestURL = baseURL + "/ts/express/\(paramValue("code"))"
+        case .tsDividend:
+            requestURL = baseURL + "/ts/dividend/\(paramValue("code"))"
+        case .tsHolderNumber:
+            requestURL = baseURL + "/ts/holder-number/\(paramValue("code"))"
+        case .tsHolderTrade:
+            requestURL = baseURL + "/ts/holder-trade/\(paramValue("code"))"
+        case .tsPledgeStat:
+            requestURL = baseURL + "/ts/pledge-stat/\(paramValue("code"))"
+        case .tsRepurchase:
+            requestURL = baseURL + "/ts/repurchase/\(paramValue("code"))"
+        case .tsMargin:
+            requestURL = baseURL + "/ts/margin/\(paramValue("code"))"
+        case .tsMarginSummary:
+            requestURL = baseURL + "/ts/margin-summary"
+        case .tsBlockTrade:
+            requestURL = baseURL + "/ts/block-trade"
+        case .tsLimitList:
+            requestURL = baseURL + "/ts/limit-list"
+        case .tsStkFactor:
+            requestURL = baseURL + "/ts/stk-factor/\(paramValue("code"))"
+        case .tsCyqPerf:
+            requestURL = baseURL + "/ts/cyq-perf/\(paramValue("code"))"
+        case .tsDailyAdj:
+            requestURL = baseURL + "/ts/daily-adj/\(paramValue("code"))"
+        case .tsAdjFactor:
+            requestURL = baseURL + "/ts/adj-factor/\(paramValue("code"))"
+        case .tsSuspend:
+            requestURL = baseURL + "/ts/suspend/\(paramValue("code"))"
+        case .tsConcept:
+            requestURL = baseURL + "/ts/concept"
+        case .tsConceptDetail:
+            requestURL = baseURL + "/ts/concept-detail/\(paramValue("concept_id"))"
+        case .tsIndexWeight:
+            requestURL = baseURL + "/ts/index-weight/\(paramValue("code"))"
+        case .tsFundBasic:
+            requestURL = baseURL + "/ts/fund-basic"
+        case .tsFundDaily:
+            requestURL = baseURL + "/ts/fund-daily/\(paramValue("code"))"
+        case .tsFundNav:
+            requestURL = baseURL + "/ts/fund-nav/\(paramValue("code"))"
+        case .tsNews:
+            requestURL = baseURL + "/ts/news"
+        case .tsTradeCal:
+            requestURL = baseURL + "/ts/trade-cal"
+        // 数据同步
+        case .syncRecent:
+            requestURL = baseURL + "/sync/recent?days=\(paramValue("days"))"
+        case .syncDailyKline:
+            requestURL = baseURL + "/sync/daily-kline?days=\(paramValue("days"))"
+        case .syncDailyBasic:
+            requestURL = baseURL + "/sync/daily-basic?days=\(paramValue("days"))"
+        case .syncSectorMoneyflow:
+            requestURL = baseURL + "/sync/sector-moneyflow"
+        case .syncStockMoneyflow:
+            requestURL = baseURL + "/sync/stock-moneyflow?days=\(paramValue("days"))"
+        case .syncIndexDaily:
+            requestURL = baseURL + "/sync/index-daily?days=\(paramValue("days"))"
+        case .syncHsgt:
+            requestURL = baseURL + "/sync/hsgt?days=\(paramValue("days"))"
+        case .syncStockLimit:
+            requestURL = baseURL + "/sync/stock-limit?days=\(paramValue("days"))"
+        case .syncConcept:
+            requestURL = baseURL + "/sync/concept"
         case .weatherBeijing:
             requestURL = baseURL + "/weather/beijing"
         }

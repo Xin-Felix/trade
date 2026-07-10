@@ -15,6 +15,7 @@
 - [错误码与处理](#错误码与处理)
 - [模型映射参考](#模型映射参考)
 - [后续接口规划](#后续接口规划)
+- [新增接口](#新增接口)
 - [相关文件](#相关文件)
 
 ## 通用约定
@@ -732,7 +733,6 @@ iOS 端模型已使用 `CodingKeys` 做好映射，调用时直接使用 Swift �
 
 | 功能 | 预计接口 | 说明 |
 |---|---|---|
-| 财务指标 | `GET /stocks/fina-indicator/{code}` | 季度财务数据 |
 | 录入持仓 | `POST /portfolio` | 记录成本价、数量 |
 | 修改持仓 | `PUT /portfolio/{code}` | 更新成本/数量 |
 | 删除持仓 | `DELETE /portfolio/{code}` | 清仓 |
@@ -740,10 +740,66 @@ iOS 端模型已使用 `CodingKeys` 做好映射，调用时直接使用 Swift �
 | Apple 登录 | `POST /auth/login/apple` | 补充真实验证 |
 | 行情提醒配置 | `POST /alerts` / `GET /alerts` | 股价/涨跌幅提醒 |
 
-> 注：自选股已改为 iOS 端本地缓存，不再规划后端接口。板块资金流动态趋势接口已上线。
+## 新增接口
 
-- 后端路由：`trade_backend/app/api/v1/endpoints/`
-- 后端模型：`trade_backend/app/schemas/`
+### GET /stocks/concepts/{code}
+
+获取某只股票所属的全部概念/题材板块（复盘用）。
+
+**认证**：需要登录。
+
+**响应示例：**
+
+```json
+[
+  {"concept_id": "885760.TI", "concept_name": "芯片概念", "ts_code": "000001.SZ", "name": "平安银行", "in_date": "20200101", "out_date": null}
+]
+```
+
+### 数据同步接口 (POST /sync/*)
+
+所有同步接口使用后台任务，调用后立即返回 `{"status": "started", ...}`。
+
+| 端点 | 说明 |
+|------|------|
+| `POST /sync/recent?days=3` | 全量增量同步（日K+因子+板块+指数+涨跌停） |
+| `POST /sync/daily-kline?days=1` | 仅日K线 |
+| `POST /sync/daily-basic?days=1` | 仅日线因子 |
+| `POST /sync/sector-moneyflow?days=3` | 板块资金流 |
+| `POST /sync/stock-moneyflow?days=3` | 个股资金流 |
+| `POST /sync/index-daily?days=3` | 指数日线 |
+| `POST /sync/hsgt?days=3` | 沪深港通 |
+| `POST /sync/stock-limit?days=3` | 涨跌停 |
+| `POST /sync/concept` | 概念板块成分映射（全量，耗时几分钟） |
+
+### Tushare 代理接口 (GET /ts/*)
+
+124 个接口直接透传 Tushare Pro API，不经过本地数据库。
+适合快速查看数据、验证策略逻辑。
+
+完整接口目录见：`trade_backend/app/api/v1/endpoints/tushare/__init__.py`
+
+主要分类：
+- 股票基础/行情 (12个)
+- 财务数据 (10个)
+- 参考数据 (15个)
+- 打板/题材/龙虎榜 (27个)
+- 资金流向 (8个)
+- 两融数据 (4个)
+- 特色数据 (11个)
+- ETF/基金 (11个)
+- 指数 (14个)
+- 宏观/新闻 (14个)
+
+## 相关文件
+
+- 后端路由入口：`trade_backend/app/api/v1/api.py`
+- 后端股票业务：`trade_backend/app/api/v1/endpoints/stocks.py`
+- 后端数据同步：`trade_backend/app/api/v1/endpoints/sync.py`
+- 后端 Tushare 代理：`trade_backend/app/api/v1/endpoints/tushare/`（一接口一文件，__init__.py 有完整目录）
+- 后端 ORM 模型：`trade_backend/app/models/stock.py`
+- 后端 Pydantic 模型：`trade_backend/app/schemas/stock.py`
 - iOS 网络层：`YingPlus/Services/API/`
 - iOS 股票模型：`YingPlus/Services/Stocks/StockModels.swift`
 - iOS 股票服务：`YingPlus/Services/Stocks/StockService.swift`
+- iOS 接口测试：`YingPlus/Views/APITestView.swift`

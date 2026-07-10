@@ -1,176 +1,195 @@
 # 盈多多 / Ying+ 架构文档
 
+> 更新时间：2026-07-08
+
 ## 整体架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         用户桌面                              │
-│  ┌─────────────┐  ┌─────────────────────┐  │
-│  │  时钟组件    │  │  行情提醒组件（后续） │  │
-│  │  (WidgetKit)│  │  (WidgetKit)        │  │
-│  └──────┬──────┘  └──────────┬──────────┘  │
-└─────────┼────────────────┼────────────────────┼─────────────┘
-          │                │                    │
-          ▼                ▼                    ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 YingPlusWidget                          │
-│            (独立 Extension，负责渲染组件)                     │
-└─────────────────────────────────────────────────────────────┘
-          │
-          │ 共享数据（后续通过 App Groups）
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    YingPlus                             │
-│      (主 App：登录、行情、自选股、持仓、设置)                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  LoginView   │  │  MarketView  │  │  SettingsView│      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-│         │                 │                  │              │
-│         ▼                 ▼                  ▼              │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │   AuthService / StockService / PortfolioService      │  │
-│  └───────────────────────┬──────────────────────────────┘  │
-│                          │                                  │
-│                          ▼                                  │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │        NetworkService  ◄──►  APIConfiguration         │  │
-│  └───────────────────────┬──────────────────────────────┘  │
-└──────────────────────────┼──────────────────────────────────┘
-                           │ HTTPS / Bearer Token
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   trade_backend (FastAPI)                    │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │    auth    │  │   stocks   │  │   weather  │            │
-│  └──────┬─────┘  └──────┬─────┘  └──────┬─────┘            │
-│         │               │               │                  │
-│         ▼               ▼               ▼                  │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │              services / models / schemas              │  │
-│  └───────────────────────┬──────────────────────────────┘  │
-│                          │                                  │
-│                          ▼                                  │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │                    MySQL + Redis                      │  │
-│  └───────────────────────┬──────────────────────────────┘  │
-│                          │                                  │
-│                          ▼                                  │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  外部数据源：Tushare / Open-Meteo / Apple Sign In     │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         iOS App (YingPlus)                       │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────┐ │
+│  │ HomeView │ │MarketView│ │WidgetView│ │APITestView│ │Setting│ │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬──────┘ └──┬───┘ │
+│       └─────────────┴────────────┴─────────────┴───────────┘     │
+│                              │                                    │
+│       AuthService / StockService / WatchlistService               │
+│                              │                                    │
+│              NetworkService + APIConfiguration                    │
+└──────────────────────────────┼────────────────────────────────────┘
+                               │ HTTP + Bearer Token
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    trade_backend (FastAPI + Docker)               │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │  /api/v1/auth     认证（邮箱验证码/密码登录）                │  │
+│  │  /api/v1/stocks   股票业务（行情/K线/自选/概念/资金流/龙虎榜）│  │
+│  │  /api/v1/sync     数据同步（后台任务触发）                   │  │
+│  │  /api/v1/ts       Tushare代理（124个接口直接透传）           │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                              │                                    │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │           services / models / schemas                      │  │
+│  └─────────────────────────┬──────────────────────────────────┘  │
+│                            │                                      │
+│  ┌─────────────┐  ┌───────┴───────┐  ┌───────────────────────┐  │
+│  │ PostgreSQL  │  │    Redis      │  │  外部数据源            │  │
+│  │ (TimescaleDB)│  │  (缓存/分时)  │  │  Tushare Pro (付费)   │  │
+│  │             │  │              │  │  akshare (实时分时)    │  │
+│  └─────────────┘  └──────────────┘  └───────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-## 代码仓库划分
-
-| 仓库 | 路径 | 说明 |
-|---|---|---|
-| iOS 客户端 | `trade_ios/` | SwiftUI + WidgetKit，包含 Docs 文档 |
-| 后端服务 | `trade_backend/` | FastAPI 后端，独立 Git 仓库 |
-
-两者通过 HTTP API 通信，后端地址由 `APIConfiguration.swift` 管理。
-
-## 演进方向
-
-### 当前已实现
-
-- 全局登录态 + 邮箱验证码登录 + 测试账号登录。
-- 股票行情接口（单股行情、K 线、自选股、板块资金流、板块资金趋势）。
-- 行情概览首页 + 行情页 + 股票/指数详情页。
-- 交互式 K 线图：缩放、平移、十字光标、长按显示当天收盘价与涨跌幅。
-- 板块资金流动态趋势图：时间段选择、当日/累计切换、排序、横屏、保存相册。
-- 自选股本地缓存：搜索和股票详情页可添加/移除，首页展示并支持左滑删除。
-- iOS 与后端目录拆分，独立管理。
-
-### 后续会在主 App 中增加
-
-- 持仓录入与持仓盈亏概览。
-- 个人资产 Dashboard。
-- 行情推送通知。
-
-### 后续会在 Widget 扩展中增加
-
-- 行情提醒小组件（自选/持仓数据展示）。
-- 通过 App Groups 共享缓存数据，Widget 只读取本地数据并渲染。
-
-## 模块说明
-
-### 主 App (YingPlus)
-
-| 目录 | 职责 |
-|------|------|
-| `App/` | 应用入口 `@main` |
-| `Views/` | SwiftUI 界面：登录、首页、行情、股票详情、指数详情、K 线、板块资金、组件列表、设置 |
-| `Services/API/` | 通用网络层：请求、错误处理、Token 注入 |
-| `Services/Auth/` | 登录/认证、Keychain Token 持久化 |
-| `Services/Stocks/` | 股票业务接口、数据模型、自选股本地缓存、K 线本地缓存 |
-| `Assets.xcassets/` | 应用图标与资源 |
-
-### 网络层
+## 后端路由架构
 
 ```
-Views ──▶ AuthService / StockService ──▶ NetworkService ──▶ 后端 API
-              │                              │
-              ▼                              ▼
-        Auth / Stock Models             APIConfiguration / APIError
+/api/v1/
+├── auth/                    # 认证
+│   ├── POST /email/code     # 发送验证码
+│   ├── POST /email/verify   # 验证码登录
+│   └── POST /login/email    # 密码登录（测试用）
+├── stocks/                  # 股票业务（读本地 DB）
+│   ├── GET /quote/{code}    # 单股行情
+│   ├── GET /klines/{code}   # K线（日/周/月/年）
+│   ├── GET /intraday/{code} # 分时K线（akshare实时）
+│   ├── GET /indices         # 大盘指数
+│   ├── GET /search          # 股票搜索
+│   ├── GET /basics          # 全部股票列表
+│   ├── GET /daily-basic/{code} # 日线因子
+│   ├── GET /watchlist       # 自选股CRUD
+│   ├── GET /sector-moneyflow    # 板块资金排行
+│   ├── GET /sector-moneyflow/trend # 板块资金趋势
+│   ├── GET /moneyflow/{code}    # 个股资金流
+│   ├── GET /moneyflow-hsgt      # 沪深港通
+│   ├── GET /index-daily/{code}  # 指数日线
+│   ├── GET /stock-limit     # 涨跌停
+│   ├── GET /top-list        # 龙虎榜
+│   ├── GET /top-inst        # 龙虎榜机构
+│   ├── GET /ths-index       # THS指数列表
+│   ├── GET /ths-daily/{code}# THS指数行情
+│   ├── GET /ths-member/{code}# THS成分股
+│   └── GET /concepts/{code} # 股票概念/题材归属
+├── sync/                    # 数据同步（后台任务）
+│   ├── POST /recent         # 全量增量同步
+│   ├── POST /daily-kline    # 日K线
+│   ├── POST /daily-basic    # 日线因子
+│   ├── POST /sector-moneyflow # 板块资金
+│   ├── POST /stock-moneyflow  # 个股资金
+│   ├── POST /index-daily    # 指数日线
+│   ├── POST /hsgt           # 沪深港通
+│   ├── POST /stock-limit    # 涨跌停
+│   └── POST /concept        # 概念板块成分映射
+├── ts/                      # Tushare 代理（124个，直接透传）
+│   ├── 一、股票基础/行情 (12个)
+│   ├── 二、财务数据 (10个)
+│   ├── 三、参考数据 (15个)
+│   ├── 四、打板/题材/龙虎榜 (27个)
+│   ├── 五、资金流向 (8个)
+│   ├── 六、两融数据 (4个)
+│   ├── 七、特色数据 (11个)
+│   ├── 八、ETF/基金 (11个)
+│   ├── 九、指数 (14个)
+│   └── 十、宏观/新闻 (14个)
+└── weather/                 # 天气（保留）
 ```
 
-- **NetworkService**：通用 HTTP 客户端，自动注入 Bearer Token，统一处理 401/500。
-- **APIConfiguration**：管理基础 URL（开发/生产环境）和超时时间。
-- **APIError**：统一错误类型，包含中文错误信息。
-- **AuthService**：验证码登录、测试账号登录、Token 恢复/登出。
-- **KeychainService**：安全存储 access token。
+## 代码目录结构
 
-### Widget 扩展 (YingPlusWidget)
+### 后端 (trade_backend)
 
-| 文件 | 职责 |
-|------|------|
-| `YingPlusWidgetBundle.swift` | Widget 入口，注册所有组件 |
-| `ClockWidget.swift` | 时钟组件：TimelineProvider + View |
-| `WeatherWidget.swift` | 天气组件：TimelineProvider + View（保留，后续替换为行情组件） |
-| `Resources/Info.plist` | 扩展声明 |
-| `Resources/YingPlusWidget.entitlements` | 权限配置 |
+```
+trade_backend/
+├── app/
+│   ├── api/v1/endpoints/
+│   │   ├── auth.py          # 认证接口
+│   │   ├── stocks.py        # 股票业务接口（读DB）
+│   │   ├── sync.py          # 数据同步接口
+│   │   ├── weather.py       # 天气接口
+│   │   └── tushare/         # Tushare 代理（一接口一文件）
+│   │       ├── __init__.py  # 统一入口 + 接口目录索引
+│   │       ├── _base.py     # 公共工具
+│   │       ├── daily.py     # 历史日线
+│   │       ├── ... (124个接口文件)
+│   │       └── anns_d.py    # 上市公司公告
+│   ├── core/                # 配置、安全、Redis
+│   ├── db/                  # 数据库连接
+│   ├── models/              # ORM 模型（stock.py, watchlist.py等）
+│   ├── schemas/             # Pydantic 响应模型
+│   └── services/            # 业务逻辑（stock_service, auth_service等）
+├── scripts/                 # 数据同步脚本
+├── docker-compose.yml
+└── Dockerfile
+```
 
-Widget 扩展已正常嵌入主 App Target（`Embed Foundation Extensions`）。
+### iOS (trade_ios)
+
+```
+trade_ios/YingPlus/
+├── App/                     # 应用入口
+├── Views/
+│   ├── ContentView.swift    # 根视图（登录态判断）
+│   ├── HomeView.swift       # 首页（指数+自选）
+│   ├── MarketView.swift     # 行情（搜索）
+│   ├── StockDetailView.swift # 股票详情（分时+K线+指标）
+│   ├── KLineChartView.swift # K线图组件
+│   ├── SectorMoneyflowTrendView.swift # 板块资金趋势
+│   ├── APITestView.swift    # 接口测试Tab
+│   └── ...
+├── Services/
+│   ├── API/                 # 网络层
+│   ├── Auth/                # 认证服务
+│   └── Stocks/              # 股票服务+模型+缓存
+└── Docs/                    # 项目文档
+```
 
 ## 数据流
 
-### 当前实现：行情页与股票详情
+### 两条数据通路
 
-1. `HomeView` / `MarketView` / `StockDetailView` / `IndexDetailView` 调用 `StockService`。
-2. `StockService` 通过 `NetworkService` 向后端发送带 Token 的请求。
-3. 后端从 Tushare 拉取数据并返回，iOS 端解码后展示。
-4. `KLineChartView` 使用 SwiftUI `Canvas` + `Gesture` 实现缩放、平移、十字光标，长按可将当天收盘价与涨跌幅回传给父视图更新 header。
-5. `SectorMoneyflowTrendChartView` 使用 `Canvas` 自绘多折线，支持当日/累计切换、排序、横屏、保存相册。
-6. 自选股通过 `WatchlistService` 存储在 `UserDefaults`，不依赖后端。
+1. **本地数据库路径** (`/stocks/*`)：数据已通过 sync 接口落库到 PostgreSQL，读取速度快，适合日常使用。
+2. **Tushare 透传路径** (`/ts/*`)：直接调用 Tushare Pro API，不存库，适合探索数据、验证策略、快速查看最新数据。
 
-### 推荐演进：行情提醒小组件
+### 分时行情数据流
 
-1. 主 App 负责请求后端行情/持仓数据。
-2. 数据通过 App Groups 共享给 Widget（使用 `UserDefaults` / `FileManager` 共享容器）。
-3. Widget 只读取本地缓存并渲染，不直接发起网络请求。
-4. 这样更省电、更稳定，也符合 WidgetKit 的设计约束。
+```
+iOS StockDetailView → StockService.fetchIntradayKlines()
+    → 后端 /stocks/intraday/{code}
+        → akshare 实时拉取 → Redis 缓存（盘中30秒，收盘后7天）
+        → 返回给 iOS
+iOS 每60秒自动刷新一次
+```
 
-## WidgetKit 限制
+### 概念/题材数据流
 
-- 组件不是小 App，交互受限（主要支持点击打开主 App）。
-- 刷新由系统调度，开发者只能建议刷新时间（`reloadPolicy`）。
-- 不能播放动画/视频。
-- 组件尺寸固定：小、中、大、超大。
-- 复杂 UI 需使用 `accessoryInline` / `accessoryCircular` / `accessoryRectangular` 等系统模板（iOS 16+）。
+```
+用户触发 POST /sync/concept → 后端后台任务
+    → ths_index(type=N) 获取全部概念列表
+    → 逐个调 ths_member 获取成分股
+    → upsert 到 stock_concept 表
+
+iOS 查询 GET /stocks/concepts/000001
+    → 从 stock_concept 表读取该股票的全部概念归属
+```
 
 ## 安全与持久化
 
 | 数据 | 存储位置 | 说明 |
 |---|---|---|
-| Access Token | Keychain | 主 App 重启后自动恢复登录态 |
-| 自选股 | UserDefaults（iOS 端） | 用户手动添加/移除，不与后端同步 |
-| 股票基础信息列表 | 本地文件（Documents） | `StockListCacheService` 每天刷新一次，供搜索使用 |
-| K 线数据 | 本地文件（Documents） | `KLineCacheService` 按 code + period 缓存，支持增量更新 |
-| Widget 共享数据 | App Groups（后续） | 主 App 写、Widget 读 |
+| Access Token | iOS Keychain | 主 App 重启后自动恢复 |
+| 自选股 | 后端 watchlist 表 + iOS 本地缓存 | 双向同步 |
+| 股票基础信息 | iOS 本地文件 | 每天刷新一次 |
+| K 线缓存 | iOS 本地文件 | 按 code+period 缓存，支持增量 |
+| 分时缓存 | Redis | 盘中30秒TTL，收盘后7天 |
 
-## 部署关系
+## 部署
 
-- iOS App 通过 `APIConfiguration.baseURL` 连接后端。
-- 开发环境默认指向局域网地址 `http://192.168.31.86:8000`，真机调试时确保手机与 Mac 在同一局域网。
-- 生产环境应切换为 HTTPS 域名，并在 `production` 环境中配置。
+```bash
+# 后端（Docker）
+cd trade_backend
+docker compose up -d --build backend
+
+# 访问 Swagger 文档
+http://192.168.31.86:8000/docs
+```
+
+开发环境 iOS 通过 `APIConfiguration.baseURL = "http://192.168.31.86:8000"` 连接后端。

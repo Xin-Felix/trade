@@ -1,301 +1,331 @@
 import SwiftUI
 
 struct HomeView: View {
-    @State private var watchlist: [StockData] = []
     @State private var indices: [IndexItem] = []
+    @State private var hsgtFlow: [HsgtFlowData] = []
+    @State private var hotSectors: [SectorMoneyflowData] = []
     @State private var isLoading = false
-    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
-                    indexSection
-                    watchlistSection
+                VStack(spacing: 24) {
+                    aiMorningBriefSection
+                    marketOverviewSection
+                    northFlowSection
+                    hotSectorsSection
                 }
                 .padding()
             }
             .background(Color(.systemBackground).ignoresSafeArea())
-            .navigationTitle("行情概览")
+            .navigationTitle("盈多多")
             .refreshable {
-                await loadData()
+                await loadAllData()
             }
             .task {
-                await loadData()
-            }
-            .onAppear {
-                Task { await loadWatchlist() }
+                await loadAllData()
             }
         }
     }
 
-    private func loadData() async {
-        await loadIndices()
-        await loadWatchlist()
+    // MARK: - 数据加载
+
+    private func loadAllData() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        async let indicesTask = StockService.fetchIndices()
+        async let hsgtTask = MarketService.fetchHsgtFlow(limit: 5)
+        async let sectorsTask = StockService.fetchSectorMoneyflow(sectorType: .industry, limit: 8)
+
+        do { indices = try await indicesTask } catch { print("[Home] 指数加载失败: \(error)") }
+        do { hsgtFlow = try await hsgtTask } catch { print("[Home] 北向资金加载失败: \(error)") }
+        do {
+            let resp = try await sectorsTask
+            hotSectors = resp.sectors
+        } catch { print("[Home] 板块加载失败: \(error)") }
     }
 
-    // MARK: - 大盘指数
+    // MARK: - AI 晨报
 
-    private var indexSection: some View {
+    private var aiMorningBriefSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("大盘指数")
-                .font(.headline)
-                .foregroundStyle(.primary)
+            SectionHeaderView(icon: "brain", title: "AI 晨报", color: YPColor.ai, trailing: "今日")
 
-            HStack(spacing: 12) {
-                ForEach(indices) { index in
-                    NavigationLink {
-                        IndexDetailView(index: index)
-                    } label: {
-                        VStack(spacing: 6) {
-                            Text(index.name)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(String(format: "%.2f", index.value))
-                                .font(.title3)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.primary)
-                            Text(String(format: "%.2f%%", index.change))
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundStyle(index.change >= 0 ? .red : .green)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                briefItem(icon: "doc.text", title: "市场总结", description: "AI 自动生成今日市场概况")
+                Divider().padding(.leading, 40)
+                briefItem(icon: "chart.pie", title: "建议仓位", description: "基于市场情绪的仓位建议")
+                Divider().padding(.leading, 40)
+                briefItem(icon: "flame", title: "热点板块", description: "今日资金流入最多的板块")
+                Divider().padding(.leading, 40)
+                briefItem(icon: "exclamationmark.triangle", title: "风险提示", description: "需要关注的风险因素")
+                Divider().padding(.leading, 40)
+                briefItem(icon: "globe", title: "国际市场", description: "隔夜外盘走势总结")
             }
+            .padding(.vertical, 4)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
-    // MARK: - 自选股
+    private func briefItem(icon: String, title: String, description: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundStyle(YPColor.ai)
+                .frame(width: 28, height: 28)
 
-    private var watchlistSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("自选股")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-
-                Spacer()
-
-                if isLoading {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                }
-
-                Button("刷新") {
-                    Task { await loadWatchlist() }
-                }
-                .font(.caption)
-            }
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
                     .font(.subheadline)
+                    .fontWeight(.medium)
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
-            LazyVStack(spacing: 8) {
-                ForEach(watchlist) { stock in
-                    NavigationLink(value: stock) {
-                        StockRow(stock: stock)
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundStyle(.quaternary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+    }
+
+    // MARK: - 市场概览（大盘指数）
+
+    private var marketOverviewSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            NavigationLink {
+                IndicesListView()
+            } label: {
+                SectionHeaderView(icon: "chart.bar", title: "市场概览", color: YPColor.accent, trailing: "查看全部")
+            }
+            .buttonStyle(.plain)
+
+            if indices.isEmpty {
+                // 骨架屏
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(0..<4) { _ in
+                        skeletonCard
                     }
-                    .buttonStyle(.plain)
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            WatchlistService.remove(code: stock.code)
-                            Task { await loadWatchlist() }
-                        } label: {
-                            Label("删除", systemImage: "trash")
-                        }
-                    }
                 }
-
-                if watchlist.isEmpty && !isLoading {
-                    Text("暂无自选股，去搜索添加吧")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 12)
-                }
-            }
-        }
-        .navigationDestination(for: StockData.self) { stock in
-            StockDetailView(code: stock.code, name: stock.name)
-        }
-    }
-
-    private func loadIndices() async {
-        do {
-            indices = try await StockService.fetchIndices()
-        } catch {
-            print("加载大盘指数失败: \(error.localizedDescription)")
-        }
-    }
-
-    private func loadWatchlist() async {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-
-        do {
-            watchlist = try await StockService.fetchWatchlist()
-        } catch APIError.unauthorized {
-            errorMessage = "未登录，无法获取自选股"
-        } catch {
-            errorMessage = "加载失败: \(error.localizedDescription)"
-        }
-    }
-}
-
-// MARK: - 指数详情页（K 线）
-
-struct IndexDetailView: View {
-    let index: IndexItem
-
-    @State private var selectedPeriod: KlinePeriod = .day
-    @State private var klines: [KlineData] = []
-    @State private var selectedKline: KlineData?
-    @State private var isLoading = true
-    @State private var errorMessage: String?
-
-    var body: some View {
-        ZStack {
-            Color(.systemBackground)
-                .ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 16) {
-                    headerView
-                    periodPicker
-                    chartSection
-                }
-                .padding()
-            }
-        }
-        .navigationTitle(index.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            await loadKlines()
-        }
-        .onChange(of: selectedPeriod) { _, _ in
-            Task { await loadKlines() }
-        }
-    }
-
-    private var headerView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .lastTextBaseline, spacing: 12) {
-                Text(index.name)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.primary)
-
-                Spacer()
-
-                if let selectedKline = selectedKline {
-                    Text(selectedKline.tradeDate)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            let price = selectedKline?.close ?? index.value
-            let changePercent = selectedKlineChangePercent
-
-            HStack(alignment: .lastTextBaseline, spacing: 12) {
-                Text(String(format: "%.2f", price))
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundStyle(displayColor)
-
-                Text(String(format: "%.2f%%", changePercent))
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(displayColor)
-            }
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var selectedKlineChangePercent: Double {
-        guard let selectedKline = selectedKline else {
-            return index.change
-        }
-        guard selectedKline.open != 0 else { return 0 }
-        return (selectedKline.close - selectedKline.open) / selectedKline.open * 100
-    }
-
-    private var displayColor: Color {
-        guard let selectedKline = selectedKline else {
-            return index.change >= 0 ? .red : .green
-        }
-        return selectedKline.close >= selectedKline.open ? .red : .green
-    }
-
-    private var periodPicker: some View {
-        HStack(spacing: 8) {
-            ForEach(KlinePeriod.allCases, id: \.self) { period in
-                Button(action: {
-                    selectedPeriod = period
-                }) {
-                    Text(period.title)
-                        .font(.system(size: 14, weight: selectedPeriod == period ? .semibold : .regular))
-                        .foregroundStyle(selectedPeriod == period ? .white : .secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(selectedPeriod == period ? Color(red: 0.25, green: 0.25, blue: 0.28) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var chartSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, minHeight: 360)
-            } else if isLoading {
-                ProgressView()
-                    .scaleEffect(1.2)
-                    .frame(maxWidth: .infinity, minHeight: 360)
             } else {
-                KLineChartView(data: klines, selectedKline: $selectedKline)
-                    .frame(height: 360)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(indices) { index in
+                        indexCard(index)
+                    }
+                }
             }
         }
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    private func loadKlines() async {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-
-        guard let tsCode = index.tsCode else {
-            errorMessage = "缺少指数代码"
-            return
+    private func indexCard(_ item: IndexItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(item.name)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text(String(format: "%.2f", item.value))
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundStyle(item.change >= 0 ? YPColor.up : YPColor.down)
+            Text(String(format: "%+.2f%%", item.change))
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(item.change >= 0 ? YPColor.up : YPColor.down)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
 
-        do {
-            klines = try await StockService.fetchKlines(code: tsCode, period: selectedPeriod, limit: 200)
-        } catch APIError.unauthorized {
-            errorMessage = "未登录，请先登录"
-        } catch {
-            errorMessage = "加载失败: \(error.localizedDescription)"
+    private var skeletonCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color(.tertiarySystemFill))
+                .frame(width: 60, height: 12)
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color(.tertiarySystemFill))
+                .frame(width: 90, height: 18)
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color(.tertiarySystemFill))
+                .frame(width: 50, height: 12)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: - 北向资金
+
+    private var northFlowSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeaderView(icon: "arrow.up.arrow.down.circle", title: "北向资金", color: YPColor.info)
+
+            if let today = hsgtFlow.first {
+                let yesterday = hsgtFlow.count > 1 ? hsgtFlow[1] : nil
+                let todayNet = today.northMoney ?? 0
+                let yesterdayNet = yesterday?.northMoney ?? 0
+                let dailyChange = todayNet - yesterdayNet
+
+                HStack(spacing: 12) {
+                    // 今日净流入
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("今日合计")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(today.northMoneyFormatted)
+                            .font(.title3)
+                            .fontWeight(.bold)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    // 日变化
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("日变化")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(String(format: "%+.1f亿", dailyChange / 10000.0))
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundStyle(dailyChange >= 0 ? YPColor.up : YPColor.down)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
+                // 沪股通 / 深股通 明细
+                HStack(spacing: 12) {
+                    flowDetailItem(title: "沪股通", value: today.hgt)
+                    flowDetailItem(title: "深股通", value: today.sgt)
+                }
+            } else {
+                PlaceholderCard(icon: "arrow.up.arrow.down", description: "北向资金数据加载中...", color: YPColor.info)
+            }
+        }
+    }
+
+    private func flowDetailItem(title: String, value: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let v = value {
+                Text(String(format: "%.1f亿", v / 10000.0))
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            } else {
+                Text("--")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: - 热点板块
+
+    private var hotSectorsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            NavigationLink {
+                AllSectorsView()
+            } label: {
+                SectionHeaderView(icon: "flame", title: "热点板块", color: YPColor.warning, trailing: "查看全部")
+            }
+            .buttonStyle(.plain)
+
+            if hotSectors.isEmpty {
+                VStack(spacing: 6) {
+                    ForEach(0..<5) { _ in
+                        HStack {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color(.tertiarySystemFill))
+                                .frame(width: 60, height: 14)
+                            Spacer()
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color(.tertiarySystemFill))
+                                .frame(width: 50, height: 14)
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 12)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(Array(hotSectors.prefix(8).enumerated()), id: \.element.id) { index, sector in
+                        NavigationLink {
+                            SectorDetailView(sector: sector)
+                        } label: {
+                            sectorRow(index: index, sector: sector)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func sectorRow(index: Int, sector: SectorMoneyflowData) -> some View {
+        HStack(spacing: 10) {
+            Text("\(index + 1)")
+                .font(.caption)
+                .fontWeight(.bold)
+                .foregroundStyle(index < 3 ? YPColor.warning : .secondary)
+                .frame(width: 20)
+
+            Text(sector.name ?? "--")
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            if let lead = sector.leadStock {
+                Text(lead)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            if let pct = sector.pctChange {
+                Text(String(format: "%+.2f%%", pct))
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(pct >= 0 ? YPColor.up : YPColor.down)
+            }
+
+            if let net = sector.netAmount {
+                Text(String(format: "%.0f亿", net))
+                    .font(.caption)
+                    .foregroundStyle(net >= 0 ? YPColor.up : YPColor.down)
+                    .frame(width: 50, alignment: .trailing)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundStyle(.quaternary)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 

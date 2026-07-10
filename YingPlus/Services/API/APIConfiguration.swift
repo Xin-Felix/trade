@@ -7,7 +7,8 @@ enum APIEnvironment {
     var baseURL: String {
         switch self {
         case .development:
-            return "http://172.17.82.33:8000"
+//             return "http://172.17.80.171:8000"
+            return "http://192.168.31.86:8000"
         case .production:
             return "https://api.example.com"
         }
