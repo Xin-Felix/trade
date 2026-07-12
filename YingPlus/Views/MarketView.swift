@@ -1,5 +1,29 @@
 import SwiftUI
 
+// MARK: - 市场分类
+
+enum MarketCategory: String, CaseIterable, Identifiable {
+    case aShare = "A股"
+    case hk = "港股"
+    case us = "美股"
+    case etf = "ETF"
+    case indices = "指数"
+
+    var id: String { rawValue }
+}
+
+// MARK: - 资金流向子标签
+
+enum FundFlowTab: String, CaseIterable, Identifiable {
+    case north = "北向"
+    case industry = "行业"
+    case concept = "概念"
+
+    var id: String { rawValue }
+}
+
+// MARK: - 市场页
+
 struct MarketView: View {
     @State private var searchCode = ""
     @State private var allStocks: [StockBasicInfo] = []
@@ -7,6 +31,17 @@ struct MarketView: View {
     @State private var isLoadingStocks = false
     @State private var selectedStock: StockBasicInfo?
     @State private var watchlistCodes: Set<String> = []
+    @State private var portfolioCodes: Set<String> = []
+    @State private var portfolioItems: [PortfolioItem] = []
+    @State private var selectedPortfolioStock: StockBasicInfo?
+    @State private var selectedCategory: MarketCategory = .aShare
+    @State private var selectedFundFlowTab: FundFlowTab = .north
+    @State private var hotSectors: [SectorMoneyflowData] = []
+    @State private var industryFlow: [SectorMoneyflowData] = []
+    @State private var conceptFlow: [SectorMoneyflowData] = []
+    @State private var hsgtFlow: [HsgtFlowData] = []
+    @State private var isLoadingData = false
+    @State private var limitErrorMessage: String?
     @FocusState private var isSearchFieldFocused: Bool
 
     var body: some View {
@@ -14,21 +49,35 @@ struct MarketView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     searchSection
-                    marketOverviewEntrySection
-                    sectorCenterSection
-                    featureModulesSection
+                    categoryTabsSection
+                    categoryContent
                 }
-                .padding()
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
             }
             .background(Color(.systemBackground).ignoresSafeArea())
             .navigationTitle("市场")
             .refreshable {
                 await loadStockBasics()
+                await loadMarketData(forceRefresh: true)
                 watchlistCodes = Set(WatchlistService.load().map(\.code))
+                await loadPortfolioCodes()
             }
             .task {
                 await loadStockBasics()
+                await loadMarketData()
                 watchlistCodes = Set(WatchlistService.load().map(\.code))
+                await loadPortfolioCodes()
+            }
+            .sheet(item: $selectedPortfolioStock) { stock in
+                PortfolioEditSheet(
+                    code: stock.code,
+                    name: stock.name,
+                    existingItem: portfolioItem(for: stock),
+                    onSave: {
+                        Task { await loadPortfolioCodes() }
+                    }
+                )
             }
         }
     }
@@ -37,6 +86,17 @@ struct MarketView: View {
 
     private var searchSection: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let limitErrorMessage {
+                Text(limitErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(YPColor.up)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(YPColor.up.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
             HStack(spacing: 12) {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
@@ -92,9 +152,39 @@ struct MarketView: View {
                                     Image(systemName: watchlistCodes.contains(stock.code) ? "star.fill" : "star")
                                         .font(.subheadline)
                                         .foregroundStyle(watchlistCodes.contains(stock.code) ? YPColor.warning : Color.gray)
-                                        .frame(width: 44, height: 44)
+                                        .frame(width: 36, height: 44)
                                 }
                                 .buttonStyle(.plain)
+
+                                if portfolioCodes.contains(stock.code) {
+                                    Menu {
+                                        Button {
+                                            selectedPortfolioStock = stock
+                                        } label: {
+                                            Label("编辑持仓", systemImage: "pencil")
+                                        }
+                                        Button(role: .destructive) {
+                                            Task { await removeFromPortfolio(stock: stock) }
+                                        } label: {
+                                            Label("删除持仓", systemImage: "trash")
+                                        }
+                                    } label: {
+                                        Image(systemName: "briefcase.fill")
+                                            .font(.subheadline)
+                                            .foregroundStyle(YPColor.accent)
+                                            .frame(width: 36, height: 44)
+                                    }
+                                } else {
+                                    Button {
+                                        selectedPortfolioStock = stock
+                                    } label: {
+                                        Image(systemName: "briefcase")
+                                            .font(.subheadline)
+                                            .foregroundStyle(Color.gray)
+                                            .frame(width: 36, height: 44)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
 
                             if stock.id != suggestions.prefix(10).last?.id {
@@ -115,184 +205,293 @@ struct MarketView: View {
         }
     }
 
-    // MARK: - 市场概览入口
+    // MARK: - 分类切换
 
-    private var marketOverviewEntrySection: some View {
+    private var categoryTabsSection: some View {
+        Picker("市场分类", selection: $selectedCategory) {
+            ForEach(MarketCategory.allCases) { category in
+                Text(category.rawValue).tag(category)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: - 分类内容
+
+    @ViewBuilder
+    private var categoryContent: some View {
+        switch selectedCategory {
+        case .aShare:
+            aShareContent
+        case .indices:
+            indicesContent
+        case .hk, .us, .etf:
+            placeholderCategoryContent
+        }
+    }
+
+    private var aShareContent: some View {
+        VStack(spacing: 16) {
+            hotSectorsHorizontalSection
+            fundFlowSection
+            deepModulesSection
+            moreMenuSection
+        }
+    }
+
+    private var indicesContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeaderView(icon: "chart.bar", title: "市场概览", color: YPColor.accent)
+            SectionHeaderView(icon: "chart.bar", title: "大盘指数", color: YPColor.market)
 
             NavigationLink {
                 IndicesListView()
             } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "globe.asia.australia.fill")
-                        .font(.title3)
-                        .foregroundStyle(YPColor.accent)
-                        .frame(width: 40, height: 40)
-                        .background(YPColor.accent.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("大盘指数")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.primary)
-                        Text("查看国内及全球主要指数走势")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.quaternary)
-                }
-                .padding(14)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                MarketMenuRow(
+                    icon: "globe.asia.australia.fill",
+                    title: "全部指数",
+                    subtitle: "查看国内及全球主要指数走势",
+                    color: YPColor.market
+                )
             }
             .buttonStyle(.plain)
         }
     }
 
-    // MARK: - 板块中心
+    private var placeholderCategoryContent: some View {
+        PlaceholderCard(
+            icon: "globe",
+            title: "功能开发中",
+            description: "\(selectedCategory.rawValue) 数据即将上线",
+            color: YPColor.international
+        )
+    }
 
-    private var sectorCenterSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeaderView(icon: "square.grid.3x3", title: "板块中心", color: YPColor.ai)
+    // MARK: - 热门板块
 
-            NavigationLink {
-                SectorMoneyflowTrendView()
-            } label: {
-                sectorEntryRow(
-                    icon: "chart.pie.fill",
-                    title: "每日资金流向",
-                    subtitle: "按天查看行业/概念板块资金净流入趋势",
-                    color: YPColor.ai
-                )
+    private var hotSectorsHorizontalSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeaderView(icon: "flame", title: "热门板块", color: YPColor.hot)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    if hotSectors.isEmpty {
+                        ForEach(0..<3) { _ in
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(.tertiarySystemFill))
+                                .frame(width: 140, height: 110)
+                        }
+                    } else {
+                        ForEach(Array(hotSectors.prefix(10).enumerated()), id: \.element.id) { index, sector in
+                            NavigationLink {
+                                SectorDetailView(sector: sector, isConcept: false)
+                            } label: {
+                                HotSectorHorizontalCard(sector: sector, rank: index + 1)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
             }
+        }
+    }
 
-            NavigationLink {
-                SectorIntradayFlowView()
-            } label: {
-                sectorEntryRow(
-                    icon: "waveform.path.ecg",
-                    title: "分时资金流向",
-                    subtitle: "概念板块实时资金流入/流出分时数据",
+    // MARK: - 资金流向
+
+    private var fundFlowSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeaderView(icon: "arrow.up.arrow.down.circle", title: "资金流向", color: YPColor.accent)
+
+            Picker("资金流向", selection: $selectedFundFlowTab) {
+                ForEach(FundFlowTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Group {
+                switch selectedFundFlowTab {
+                case .north:
+                    northFlowContent
+                case .industry:
+                    sectorFlowContent(sectors: industryFlow, isConcept: false)
+                case .concept:
+                    sectorFlowContent(sectors: conceptFlow, isConcept: true)
+                }
+            }
+        }
+    }
+
+    private var northFlowContent: some View {
+        Group {
+            if let today = hsgtFlow.first {
+                let yesterday = hsgtFlow.count > 1 ? hsgtFlow[1] : nil
+                let todayNet = today.northMoney ?? 0
+                let yesterdayNet = yesterday?.northMoney ?? 0
+                let dailyChange = todayNet - yesterdayNet
+
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        flowDetailItem(title: "今日合计", value: today.northMoneyFormatted, color: .primary)
+                        flowDetailItem(title: "日变化", value: String(format: "%+.1f亿", dailyChange / 10000.0), color: dailyChange >= 0 ? YPColor.up : YPColor.down)
+                    }
+
+                    HStack(spacing: 10) {
+                        flowDetailItem(title: "沪股通", value: formatFlow(today.hgt), color: (today.hgt ?? 0) >= 0 ? YPColor.up : YPColor.down)
+                        flowDetailItem(title: "深股通", value: formatFlow(today.sgt), color: (today.sgt ?? 0) >= 0 ? YPColor.up : YPColor.down)
+                    }
+                }
+                .padding(10)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                PlaceholderCard(
+                    icon: "arrow.up.arrow.down",
+                    title: "暂无数据",
+                    description: "北向资金数据暂时为空",
                     color: YPColor.accent
                 )
             }
         }
     }
 
-    private func sectorEntryRow(icon: String, title: String, subtitle: String, color: Color) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(color)
-                .frame(width: 42, height: 42)
-                .background(color.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+    private func sectorFlowContent(sectors: [SectorMoneyflowData], isConcept: Bool) -> some View {
+        Group {
+            if sectors.isEmpty {
+                PlaceholderCard(
+                    icon: "chart.pie",
+                    title: "暂无数据",
+                    description: "板块资金流向数据暂时为空",
+                    color: YPColor.accent
+                )
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(Array(sectors.prefix(5).enumerated()), id: \.element.id) { index, sector in
+                        NavigationLink {
+                            SectorDetailView(sector: sector, isConcept: isConcept)
+                        } label: {
+                            SectorRow(
+                                index: index,
+                                name: sector.name,
+                                leadStock: sector.leadStock,
+                                pctChange: sector.pctChange,
+                                netAmount: sector.netAmount
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
+        }
+    }
 
-            Spacer()
-
-            Image(systemName: "chevron.right")
+    private func flowDetailItem(title: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
                 .font(.caption)
-                .foregroundStyle(.quaternary)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(color)
         }
-        .padding(14)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(.tertiarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    // MARK: - 功能板块（图标网格）
+    private func formatFlow(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "%.1f亿", value / 10000.0)
+    }
 
-    private var featureModulesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeaderView(icon: "square.grid.2x2", title: "功能板块", color: YPColor.info)
+    // MARK: - 深度复盘
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
-                featureButton(
-                    icon: "arrow.up.circle.fill",
-                    title: "涨停梯队",
-                    color: YPColor.up
-                ) {
-                    LimitUpLadderView()
+    private var deepModulesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeaderView(icon: "square.3.layers.3d.down.forward", title: "深度复盘", color: YPColor.ai)
+
+            VStack(spacing: 8) {
+                NavigationLink { LimitUpLadderView() } label: {
+                    MarketMenuRow(icon: "arrow.up.circle.fill", title: "涨停梯队", subtitle: "连板天梯与涨停概念", color: YPColor.up)
                 }
+                .buttonStyle(.plain)
 
-                featureButton(
-                    icon: "trophy.circle.fill",
-                    title: "龙虎榜",
-                    color: YPColor.warning
-                ) {
-                    TopListView()
+                NavigationLink { TopListView() } label: {
+                    MarketMenuRow(icon: "trophy.circle.fill", title: "龙虎榜", subtitle: "异动个股与机构席位", color: YPColor.warning)
                 }
+                .buttonStyle(.plain)
 
-                featureButton(
-                    icon: "bolt.circle.fill",
-                    title: "个股异动",
-                    color: YPColor.brandCyan
-                ) {
-                    UnusualMovesView()
+                NavigationLink { UnusualMovesView() } label: {
+                    MarketMenuRow(icon: "bolt.circle.fill", title: "个股异动", subtitle: "涨跌停、大单买入等异常变动", color: YPColor.brandCyan)
                 }
+                .buttonStyle(.plain)
 
-                featureButton(
-                    icon: "link.circle.fill",
-                    title: "板块关联",
-                    color: YPColor.info
-                ) {
-                    SectorCorrelationView()
+                NavigationLink { SectorCorrelationView() } label: {
+                    MarketMenuRow(icon: "link.circle.fill", title: "板块关联", subtitle: "板块联动与资金轮动", color: YPColor.info)
                 }
+                .buttonStyle(.plain)
             }
         }
     }
 
-    private func featureButton<Destination: View>(
-        icon: String,
-        title: String,
-        color: Color,
-        @ViewBuilder destination: () -> Destination
-    ) -> some View {
-        NavigationLink {
-            destination()
-        } label: {
-            VStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundStyle(.white)
-                    .frame(width: 48, height: 48)
-                    .background(color)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+    // MARK: - 更多菜单
 
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+    private var moreMenuSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeaderView(icon: "ellipsis.circle", title: "更多", color: .secondary)
+
+            VStack(spacing: 8) {
+                NavigationLink { IndicesListView() } label: {
+                    MarketMenuRow(icon: "globe.asia.australia.fill", title: "大盘指数", subtitle: "国内及全球主要指数", color: YPColor.market)
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink { AllSectorsView() } label: {
+                    MarketMenuRow(icon: "square.grid.3x3", title: "全部板块", subtitle: "行业/概念板块排行", color: YPColor.hot)
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink { SectorMoneyflowTrendView() } label: {
+                    MarketMenuRow(icon: "chart.pie.fill", title: "资金流动态趋势", subtitle: "按天查看板块资金净流入趋势", color: YPColor.ai)
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink { SectorIntradayFlowView() } label: {
+                    MarketMenuRow(icon: "waveform.path.ecg", title: "分时资金流向", subtitle: "概念板块实时资金流向", color: YPColor.accent)
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink { PointsView() } label: {
+                    MarketMenuRow(icon: "bitcoinsign.circle.fill", title: "我的积分", subtitle: "积分余额与明细", color: YPColor.warning)
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink { MembershipView(paymentInfo: nil) } label: {
+                    MarketMenuRow(icon: "crown.fill", title: "会员中心", subtitle: "会员权益与订阅", color: YPColor.warning)
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink { WidgetsView() } label: {
+                    MarketMenuRow(icon: "widget.small", title: "行情小组件", subtitle: "桌面组件配置", color: YPColor.market)
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink { APITestView() } label: {
+                    MarketMenuRow(icon: "hammer.fill", title: "接口测试", subtitle: "API 调试工具", color: .secondary)
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink { H5PageView(slug: "help-feedback", defaultTitle: "帮助与反馈") } label: {
+                    MarketMenuRow(icon: "questionmark.circle.fill", title: "帮助与反馈", subtitle: "常见问题与意见反馈", color: YPColor.info)
+                }
+                .buttonStyle(.plain)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
         }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Helpers
-
-    private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color(.tertiarySystemFill))
-            .frame(width: width, height: height)
     }
 
     // MARK: - 数据加载
@@ -311,6 +510,35 @@ struct MarketView: View {
         } catch {
             print("加载股票列表失败: \(error.localizedDescription)")
         }
+    }
+
+    private func loadMarketData(forceRefresh: Bool = false) async {
+        isLoadingData = true
+        defer { isLoadingData = false }
+
+        let policy: CachePolicy = forceRefresh ? .skipCache : .default
+
+        async let sectorsTask = StockService.fetchSectorMoneyflow(sectorType: .industry, limit: 12, policy: policy)
+        async let industryTask = StockService.fetchSectorMoneyflow(sectorType: .industry, limit: 8, policy: policy)
+        async let conceptTask = StockService.fetchSectorMoneyflow(sectorType: .concept, limit: 8, policy: policy)
+        async let hsgtTask = MarketService.fetchHsgtFlow(limit: 5, policy: policy)
+
+        do {
+            let resp = try await sectorsTask
+            hotSectors = resp.sectors
+        } catch { if error is CancellationError { return }; print("[Market] 热门板块加载失败: \(error)") }
+
+        do {
+            let resp = try await industryTask
+            industryFlow = resp.sectors
+        } catch { if error is CancellationError { return }; print("[Market] 行业资金加载失败: \(error)") }
+
+        do {
+            let resp = try await conceptTask
+            conceptFlow = resp.sectors
+        } catch { if error is CancellationError { return }; print("[Market] 概念资金加载失败: \(error)") }
+
+        do { hsgtFlow = try await hsgtTask } catch { if error is CancellationError { return }; print("[Market] 北向资金加载失败: \(error)") }
     }
 
     private func filterStocksDebounced() async {
@@ -335,358 +563,45 @@ struct MarketView: View {
         if watchlistCodes.contains(stock.code) {
             WatchlistService.remove(code: stock.code)
             watchlistCodes.remove(stock.code)
+            limitErrorMessage = nil
         } else {
-            WatchlistService.add(code: stock.code, name: stock.name)
-            watchlistCodes.insert(stock.code)
-        }
-    }
-}
-
-// MARK: - 龙虎榜详情页
-
-struct TopListView: View {
-    @State private var topListItems: [TopListItem] = []
-    @State private var isLoading = false
-    @State private var loadError: Error?
-    @State private var selectedDate: Date
-    @State private var isDatePickerPresented = false
-
-    init() {
-        _selectedDate = State(initialValue: TopListView.latestTradeDate())
-    }
-
-    private static let requestFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd"
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
-        return formatter
-    }()
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                if let date = topListItems.first?.tradeDate {
-                    tradeDateHeader(date)
-                }
-
-                if isLoading && topListItems.isEmpty {
-                    loadingList
-                } else if let error = loadError {
-                    errorState(error)
-                } else if topListItems.isEmpty {
-                    PlaceholderCard(
-                        icon: "trophy.circle",
-                        title: "暂无数据",
-                        description: "暂无龙虎榜数据",
-                        color: YPColor.warning
-                    )
-                } else {
-                    topListContent
-                }
-            }
-            .padding()
-        }
-        .background(Color(.systemBackground).ignoresSafeArea())
-        .navigationTitle("龙虎榜")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isDatePickerPresented = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "calendar")
-                        Text(displayDate(selectedDate))
-                            .font(.subheadline)
-                    }
-                    .foregroundStyle(YPColor.warning)
-                }
-            }
-        }
-        .refreshable { await loadData(forceRefresh: true) }
-        .task { await loadData() }
-        .sheet(isPresented: $isDatePickerPresented) {
-            datePickerSheet
-        }
-    }
-
-    private var topListContent: some View {
-        LazyVStack(spacing: 10) {
-            ForEach(topListItems) { item in
-                NavigationLink {
-                    StockDetailView(code: item.tsCode, name: item.name ?? item.tsCode)
-                } label: {
-                    topListCard(item)
-                }
-                .buttonStyle(.plain)
+            let added = WatchlistService.add(code: stock.code, name: stock.name)
+            if added {
+                watchlistCodes.insert(stock.code)
+                limitErrorMessage = nil
+            } else {
+                limitErrorMessage = "自选股最多 20 只，建议精简票池后再添加"
             }
         }
     }
 
-    private func topListCard(_ item: TopListItem) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.name ?? item.tsCode)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(item.tsCode)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-
-                Spacer()
-
-                if let pct = item.pctChange {
-                    Text(String(format: "%+.2f%%", pct))
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(pct >= 0 ? YPColor.up : YPColor.down)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-            }
-
-            HStack(spacing: 16) {
-                metricItem(title: "净买入", value: item.netAmountFormatted, color: (item.netAmount ?? 0) >= 0 ? YPColor.up : YPColor.down)
-
-                if let turnover = item.turnoverRate {
-                    metricItem(title: "换手率", value: String(format: "%.2f%%", turnover))
-                }
-
-                if let amount = item.amount {
-                    metricItem(title: "成交额", value: formatAmount(amount))
-                }
-
-                Spacer()
-            }
-
-            if let reason = item.reason, !reason.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "lightbulb")
-                        .font(.caption2)
-                        .foregroundStyle(YPColor.warning)
-                    Text(reason)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                .padding(.top, 2)
-            }
-        }
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func metricItem(title: String, value: String, color: Color? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(color ?? .primary)
+    private func loadPortfolioCodes() async {
+        do {
+            let portfolio = try await StockService.fetchPortfolio()
+            portfolioItems = portfolio
+            portfolioCodes = Set(portfolio.map(\.code))
+        } catch {
+            if error is CancellationError { return }
+            print("[Market] 加载持仓失败: \(error.localizedDescription)")
         }
     }
 
-    private func formatAmount(_ amount: Double) -> String {
-        if abs(amount) >= 100_000_000 {
-            return String(format: "%.2f亿", amount / 100_000_000)
-        } else if abs(amount) >= 10_000 {
-            return String(format: "%.0f万", amount / 10_000)
-        }
-        return String(format: "%.0f", amount)
-    }
-
-    private var loadingList: some View {
-        VStack(spacing: 10) {
-            ForEach(0..<6) { _ in
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.tertiarySystemFill))
-                    .frame(height: 100)
-            }
+    private func removeFromPortfolio(stock: StockBasicInfo) async {
+        do {
+            try await StockService.removeFromPortfolio(code: stock.code)
+            await loadPortfolioCodes()
+        } catch {
+            if error is CancellationError { return }
+            print("[Market] 删除持仓失败: \(error.localizedDescription)")
         }
     }
 
-    private func errorState(_ error: Error) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.title2)
-                .foregroundStyle(YPColor.warning.opacity(0.8))
-            Text("数据加载失败")
-                .font(.subheadline)
-                .fontWeight(.medium)
-            Text(error.localizedDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+    private func togglePortfolio(stock: StockBasicInfo) {
+        selectedPortfolioStock = stock
     }
 
-    private func tradeDateHeader(_ date: String) -> some View {
-        HStack {
-            Spacer()
-            Image(systemName: "calendar")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(formatTradeDate(date))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-    }
-
-    private var datePickerSheet: some View {
-        NavigationStack {
-            VStack(spacing: 20) {
-                DatePicker(
-                    "选择交易日",
-                    selection: $selectedDate,
-                    in: ...Date(),
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
-                .padding()
-
-                Spacer()
-            }
-            .navigationTitle("选择交易日")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("确定") {
-                        isDatePickerPresented = false
-                        Task { await loadData(forceRefresh: true) }
-                    }
-                    .fontWeight(.semibold)
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("取消") {
-                        isDatePickerPresented = false
-                    }
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
-
-    private func loadData(forceRefresh: Bool = false) async {
-        isLoading = true
-        loadError = nil
-        defer { isLoading = false }
-
-        let policy: CachePolicy = forceRefresh ? .skipCache : .default
-        let calendar = Calendar.current
-        var date = selectedDate
-
-        // 最多回退 5 个交易日请求数据
-        for _ in 0..<5 {
-            let dateString = Self.requestFormatter.string(from: date)
-            do {
-                topListItems = try await MarketService.fetchTopList(tradeDate: dateString, limit: 50, policy: policy)
-                if !topListItems.isEmpty {
-                    selectedDate = date
-                    return
-                }
-            } catch {
-                if error is CancellationError { return }
-                print("[TopList] \(dateString) 加载失败: \(error.localizedDescription)")
-                loadError = error
-            }
-            date = previousTradeDate(from: date, calendar: calendar)
-        }
-    }
-
-    private func previousTradeDate(from date: Date, calendar: Calendar) -> Date {
-        var previous = calendar.date(byAdding: .day, value: -1, to: date) ?? date
-        while Self.isWeekend(previous, calendar: calendar) {
-            previous = calendar.date(byAdding: .day, value: -1, to: previous) ?? previous
-        }
-        return previous
-    }
-
-    private func formatTradeDate(_ date: String) -> String {
-        guard date.count == 8 else { return date }
-        let year = date.prefix(4)
-        let month = date[date.index(date.startIndex, offsetBy: 4)..<date.index(date.startIndex, offsetBy: 6)]
-        let day = date[date.index(date.startIndex, offsetBy: 6)...]
-        return "\(year)-\(month)-\(day)"
-    }
-
-    private func displayDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM-dd"
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
-        return formatter.string(from: date)
-    }
-
-    private static func latestTradeDate() -> Date {
-        let calendar = Calendar.current
-        var date = Date()
-        while isWeekend(date, calendar: calendar) {
-            date = calendar.date(byAdding: .day, value: -1, to: date) ?? date
-        }
-        return date
-    }
-
-    private static func isWeekend(_ date: Date, calendar: Calendar) -> Bool {
-        let weekday = calendar.component(.weekday, from: date)
-        return weekday == 1 || weekday == 7
-    }
-}
-
-// MARK: - 板块关联分析（占位）
-
-struct SectorCorrelationView: View {
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                PlaceholderCard(
-                    icon: "link.circle",
-                    title: "功能开发中",
-                    description: "分析板块之间的联动关系和资金轮动",
-                    color: YPColor.info
-                )
-            }
-            .padding()
-        }
-        .background(Color(.systemBackground).ignoresSafeArea())
-        .navigationTitle("板块关联分析")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// MARK: - 个股异动（占位）
-
-struct UnusualMovesView: View {
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                PlaceholderCard(
-                    icon: "bolt.circle",
-                    title: "功能开发中",
-                    description: "涨停、跌停、大单买入等异常变动",
-                    color: YPColor.up
-                )
-            }
-            .padding()
-        }
-        .background(Color(.systemBackground).ignoresSafeArea())
-        .navigationTitle("个股异动")
-        .navigationBarTitleDisplayMode(.inline)
+    private func portfolioItem(for stock: StockBasicInfo) -> PortfolioItem? {
+        portfolioItems.first { $0.code == stock.code }
     }
 }
 

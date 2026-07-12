@@ -7,10 +7,14 @@ struct WatchlistView: View {
     @State private var errorMessage: String?
     @State private var filterMode: FilterMode = .all
 
+    @State private var selectedStockForPortfolio: StockData?
+
     private enum FilterMode: String, CaseIterable {
         case all = "全部自选"
         case portfolio = "我的持仓"
     }
+
+    private static let maxPreviewCount = 5
 
     var body: some View {
         NavigationStack {
@@ -31,6 +35,14 @@ struct WatchlistView: View {
             .task {
                 await loadWatchlist()
             }
+            .sheet(item: $selectedStockForPortfolio) { stock in
+                PortfolioEditSheet(
+                    code: stock.code,
+                    name: stock.name,
+                    existingItem: portfolioItem(for: stock),
+                    onSave: { Task { await loadWatchlist() } }
+                )
+            }
         }
     }
 
@@ -47,16 +59,33 @@ struct WatchlistView: View {
 
     private var myStocksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 10) {
                 SectionHeaderView(
                     icon: filterMode == .portfolio ? "briefcase.fill" : "star.fill",
                     title: sectionTitle,
                     color: filterMode == .portfolio ? YPColor.accent : YPColor.warning
                 )
+
+                if filterMode == .portfolio {
+                    HStack(spacing: 4) {
+                        Image(systemName: "hand.tap.fill")
+                            .font(.caption2)
+                        Text("长按设置持仓")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(.tertiarySystemBackground))
+                    .clipShape(Capsule())
+                }
+
                 if isLoading {
                     ProgressView()
                         .scaleEffect(0.7)
                 }
+
+                Spacer()
             }
 
             if let errorMessage {
@@ -83,9 +112,36 @@ struct WatchlistView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             } else {
                 LazyVStack(spacing: 6) {
-                    ForEach(displayedStocks) { stock in
+                    ForEach(previewStocks) { stock in
                         NavigationLink(value: stock) {
                             watchlistRow(stock: stock)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if displayedStocks.count > Self.maxPreviewCount {
+                        NavigationLink {
+                            WatchlistAllView(
+                                title: sectionTitle,
+                                stocks: displayedStocks,
+                                portfolio: portfolio,
+                                onUpdate: { Task { await loadWatchlist() } }
+                            )
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("查看全部 \(displayedStocks.count) 只")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(YPColor.accent)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(YPColor.accent)
+                                Spacer()
+                            }
+                            .padding(.vertical, 10)
+                            .background(Color(.tertiarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
                         .buttonStyle(.plain)
                     }
@@ -119,30 +175,105 @@ struct WatchlistView: View {
         }
     }
 
+    private var previewStocks: [StockData] {
+        Array(displayedStocks.prefix(Self.maxPreviewCount))
+    }
+
+    private func portfolioItem(for stock: StockData) -> PortfolioItem? {
+        portfolio.first { $0.code == stock.code }
+    }
+
     private func watchlistRow(stock: StockData) -> some View {
-        HStack {
+        let item = portfolioItem(for: stock)
+        let isPortfolioMode = filterMode == .portfolio
+
+        return HStack(alignment: .center, spacing: 10) {
+            // 左侧：名称、代码、成本/数量
             VStack(alignment: .leading, spacing: 3) {
-                Text(stock.name)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
+                HStack(spacing: 4) {
+                    Text(stock.name)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if item?.isMargin == true {
+                        Text("融")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(YPColor.up.opacity(0.12))
+                            .foregroundStyle(YPColor.up)
+                            .clipShape(Capsule())
+                    }
+                }
+
                 Text(stock.code)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+
+                if isPortfolioMode, let item {
+                    Group {
+                        if item.hasPositionDetails {
+                            Text("成本 \(String(format: "%.3f", item.costPrice ?? 0)) · \(String(format: "%.0f", item.quantity ?? 0))股")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("未设置成本/数量")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.top, 2)
+                    .lineLimit(1)
+                }
+            }
+            .layoutPriority(1)
+
+            Spacer(minLength: 6)
+
+            // 中间：盈亏（仅在持仓模式且有详情时）
+            if isPortfolioMode, let item, item.hasPositionDetails {
+                if let pnl = item.unrealizedPnL(at: stock.price),
+                   let pnlPercent = item.pnlPercent(at: stock.price) {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(String(format: "%+.2f", pnl))
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                        Text("(\(String(format: "%+.2f%%", pnlPercent)))")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(pnl >= 0 ? YPColor.up : YPColor.down)
+                    .frame(minWidth: 64, alignment: .trailing)
+                    .lineLimit(1)
+                }
             }
 
-            Spacer()
+            // 右侧：价格、涨跌幅
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(String(format: "%.2f", stock.price))
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(stock.changePercent >= 0 ? YPColor.up : YPColor.down)
+                    .lineLimit(1)
 
-            HStack(spacing: 12) {
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text(String(format: "%.2f", stock.price))
+                Text(String(format: "%+.2f%%", stock.changePercent))
+                    .font(.caption)
+                    .foregroundStyle(stock.changePercent >= 0 ? YPColor.up : YPColor.down)
+                    .lineLimit(1)
+            }
+            .frame(minWidth: 56, alignment: .trailing)
+
+            // 操作按钮
+            HStack(spacing: 6) {
+                Button {
+                    Task { await toggleWatchlist(stock: stock) }
+                } label: {
+                    Image(systemName: "star.fill")
                         .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(stock.changePercent >= 0 ? YPColor.up : YPColor.down)
-                    Text(String(format: "%+.2f%%", stock.changePercent))
-                        .font(.caption)
-                        .foregroundStyle(stock.changePercent >= 0 ? YPColor.up : YPColor.down)
+                        .foregroundStyle(YPColor.warning)
+                        .frame(width: 28, height: 32)
                 }
+                .buttonStyle(.plain)
 
                 Button {
                     Task { await togglePortfolio(stock: stock) }
@@ -150,18 +281,41 @@ struct WatchlistView: View {
                     Image(systemName: isInPortfolio(stock: stock) ? "briefcase.fill" : "briefcase")
                         .font(.subheadline)
                         .foregroundStyle(isInPortfolio(stock: stock) ? YPColor.accent : Color.gray)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 28, height: 32)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(14)
+        .padding(12)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button {
+                selectedStockForPortfolio = stock
+            } label: {
+                Label(
+                    isInPortfolio(stock: stock) ? "编辑持仓" : "添加持仓",
+                    systemImage: isInPortfolio(stock: stock) ? "pencil" : "briefcase.fill"
+                )
+            }
+            if isInPortfolio(stock: stock) {
+                Button(role: .destructive) {
+                    Task { await togglePortfolio(stock: stock) }
+                } label: {
+                    Label("删除持仓", systemImage: "trash")
+                }
+            }
+        }
     }
 
     private func isInPortfolio(stock: StockData) -> Bool {
         portfolio.contains { $0.code == stock.code }
+    }
+
+    private func toggleWatchlist(stock: StockData) async {
+        WatchlistService.remove(code: stock.code)
+        await loadWatchlist()
     }
 
     private func togglePortfolio(stock: StockData) async {
@@ -183,12 +337,54 @@ struct WatchlistView: View {
     private var dailyReviewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeaderView(icon: "calendar.badge.clock", title: "每日自动复盘", color: YPColor.accent)
-            PlaceholderCard(
-                icon: "doc.text.magnifyingglass",
-                title: "功能开发中",
-                description: "AI 自动分析持仓表现，生成每日复盘报告",
-                color: YPColor.accent
-            )
+
+            NavigationLink(destination: DailyReviewView()) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.title3)
+                            .foregroundStyle(YPColor.accent)
+                            .frame(width: 40, height: 40)
+                            .background(YPColor.accent.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("AI 每日复盘")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            Text("基于自选股生成每日收盘复盘报告")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.quaternary)
+                    }
+
+                    HStack(spacing: 6) {
+                        Text("会员专属")
+                            .font(.caption2)
+                            .foregroundStyle(YPColor.accent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(YPColor.accent.opacity(0.08))
+                            .clipShape(Capsule())
+
+                        Spacer()
+
+                        Label("查看复盘", systemImage: "sparkles")
+                            .font(.caption2)
+                            .foregroundStyle(YPColor.brandPurple)
+                    }
+                }
+                .padding(14)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -197,12 +393,54 @@ struct WatchlistView: View {
     private var aiPositionAdviceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeaderView(icon: "brain", title: "AI 仓位建议", color: YPColor.ai)
-            PlaceholderCard(
-                icon: "chart.pie",
-                title: "功能开发中",
-                description: "基于市场情绪和持仓分析，智能建议仓位配比",
-                color: YPColor.ai
-            )
+
+            NavigationLink(destination: PositionAdviceView()) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "chart.pie")
+                            .font(.title3)
+                            .foregroundStyle(YPColor.ai)
+                            .frame(width: 40, height: 40)
+                            .background(YPColor.ai.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("AI 仓位建议")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            Text("基于持仓和市场情绪，智能建议仓位配比")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.quaternary)
+                    }
+
+                    HStack(spacing: 6) {
+                        Text("会员 / 积分")
+                            .font(.caption2)
+                            .foregroundStyle(YPColor.ai)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(YPColor.ai.opacity(0.08))
+                            .clipShape(Capsule())
+
+                        Spacer()
+
+                        Label("查看建议", systemImage: "sparkles")
+                            .font(.caption2)
+                            .foregroundStyle(YPColor.brandPurple)
+                    }
+                }
+                .padding(14)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -229,4 +467,219 @@ struct WatchlistView: View {
 
 #Preview {
     WatchlistView()
+}
+
+// MARK: - 全部自选/持仓列表页
+
+struct WatchlistAllView: View {
+    let title: String
+    let stocks: [StockData]
+    let portfolio: [PortfolioItem]
+    let onUpdate: () -> Void
+
+    @State private var currentStocks: [StockData] = []
+    @State private var currentPortfolio: [PortfolioItem] = []
+    @State private var selectedStockForPortfolio: StockData?
+
+    private var isPortfolioMode: Bool { title == "我的持仓" }
+
+    init(title: String, stocks: [StockData], portfolio: [PortfolioItem], onUpdate: @escaping () -> Void) {
+        self.title = title
+        self.stocks = stocks
+        self.portfolio = portfolio
+        self.onUpdate = onUpdate
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 6) {
+                ForEach(currentStocks) { stock in
+                    NavigationLink {
+                        StockDetailView(code: stock.code, name: stock.name)
+                    } label: {
+                        watchlistRow(stock: stock)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding()
+        }
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            currentStocks = stocks
+            currentPortfolio = portfolio
+        }
+        .sheet(item: $selectedStockForPortfolio) { stock in
+            PortfolioEditSheet(
+                code: stock.code,
+                name: stock.name,
+                existingItem: portfolioItem(for: stock),
+                onSave: { Task { await refreshPortfolio() } }
+            )
+        }
+    }
+
+    private func portfolioItem(for stock: StockData) -> PortfolioItem? {
+        currentPortfolio.first { $0.code == stock.code }
+    }
+
+    private func watchlistRow(stock: StockData) -> some View {
+        let item = portfolioItem(for: stock)
+
+        return HStack(alignment: .center, spacing: 10) {
+            // 左侧：名称、代码、成本/数量
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 4) {
+                    Text(stock.name)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if item?.isMargin == true {
+                        Text("融")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(YPColor.up.opacity(0.12))
+                            .foregroundStyle(YPColor.up)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Text(stock.code)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+
+                if isPortfolioMode, let item {
+                    Group {
+                        if item.hasPositionDetails {
+                            Text("成本 \(String(format: "%.3f", item.costPrice ?? 0)) · \(String(format: "%.0f", item.quantity ?? 0))股")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("未设置成本/数量")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.top, 2)
+                    .lineLimit(1)
+                }
+            }
+            .layoutPriority(1)
+
+            Spacer(minLength: 6)
+
+            // 中间：盈亏（仅在持仓模式且有详情时）
+            if isPortfolioMode, let item, item.hasPositionDetails {
+                if let pnl = item.unrealizedPnL(at: stock.price),
+                   let pnlPercent = item.pnlPercent(at: stock.price) {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(String(format: "%+.2f", pnl))
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                        Text("(\(String(format: "%+.2f%%", pnlPercent)))")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(pnl >= 0 ? YPColor.up : YPColor.down)
+                    .frame(minWidth: 64, alignment: .trailing)
+                    .lineLimit(1)
+                }
+            }
+
+            // 右侧：价格、涨跌幅
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(String(format: "%.2f", stock.price))
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(stock.changePercent >= 0 ? YPColor.up : YPColor.down)
+                    .lineLimit(1)
+
+                Text(String(format: "%+.2f%%", stock.changePercent))
+                    .font(.caption)
+                    .foregroundStyle(stock.changePercent >= 0 ? YPColor.up : YPColor.down)
+                    .lineLimit(1)
+            }
+            .frame(minWidth: 56, alignment: .trailing)
+
+            // 操作按钮
+            HStack(spacing: 6) {
+                Button {
+                    Task { await toggleWatchlist(stock: stock) }
+                } label: {
+                    Image(systemName: "star.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(YPColor.warning)
+                        .frame(width: 28, height: 32)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    Task { await togglePortfolio(stock: stock) }
+                } label: {
+                    Image(systemName: isInPortfolio(stock: stock) ? "briefcase.fill" : "briefcase")
+                        .font(.subheadline)
+                        .foregroundStyle(isInPortfolio(stock: stock) ? YPColor.accent : Color.gray)
+                        .frame(width: 28, height: 32)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button {
+                selectedStockForPortfolio = stock
+            } label: {
+                Label(
+                    isInPortfolio(stock: stock) ? "编辑持仓" : "添加持仓",
+                    systemImage: isInPortfolio(stock: stock) ? "pencil" : "briefcase.fill"
+                )
+            }
+            if isInPortfolio(stock: stock) {
+                Button(role: .destructive) {
+                    Task { await togglePortfolio(stock: stock) }
+                } label: {
+                    Label("删除持仓", systemImage: "trash")
+                }
+            }
+        }
+    }
+
+    private func isInPortfolio(stock: StockData) -> Bool {
+        currentPortfolio.contains { $0.code == stock.code }
+    }
+
+    private func toggleWatchlist(stock: StockData) async {
+        WatchlistService.remove(code: stock.code)
+        currentStocks.removeAll { $0.code == stock.code }
+        onUpdate()
+    }
+
+    private func togglePortfolio(stock: StockData) async {
+        do {
+            if isInPortfolio(stock: stock) {
+                try await StockService.removeFromPortfolio(code: stock.code)
+            } else {
+                _ = try await StockService.addToPortfolio(code: stock.code, name: stock.name)
+            }
+            await refreshPortfolio()
+        } catch {
+            if error is CancellationError { return }
+            print("[WatchlistAll] 切换持仓失败: \(error.localizedDescription)")
+        }
+    }
+
+    private func refreshPortfolio() async {
+        do {
+            currentPortfolio = try await StockService.fetchPortfolio()
+            onUpdate()
+        } catch {
+            print("[WatchlistAll] 刷新持仓失败: \(error.localizedDescription)")
+        }
+    }
 }

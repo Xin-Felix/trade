@@ -1,23 +1,23 @@
 import SwiftUI
 
 struct HomeView: View {
+    let preloadedData: PreloadedHomeData?
+
     @State private var domesticIndices: [IndexItem] = []
     @State private var globalIndices: [IndexItem] = []
-    @State private var hsgtFlow: [HsgtFlowData] = []
     @State private var hotSectors: [SectorMoneyflowData] = []
-    @State private var dailyQuote: DailyQuoteData?
+    @State private var marketSentiment: MarketSentiment? = nil
+    @State private var aiMorningBrief: String? = nil
+    @State private var aiMorningBriefDate: String? = nil
     @State private var isLoading = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
-                    if dailyQuote != nil {
-                        dailyQuoteSection
-                    }
+                VStack(spacing: 18) {
+                    marketSentimentSection
                     aiMorningBriefSection
                     marketOverviewSection
-                    northFlowSection
                     hotSectorsSection
                 }
                 .padding()
@@ -28,12 +28,32 @@ struct HomeView: View {
                 await loadAllData(forceRefresh: true)
             }
             .task {
-                await loadAllData()
+                if let preloaded = preloadedData {
+                    applyPreloadedData(preloaded)
+                    await loadMorningReport()
+                } else {
+                    await loadAllData()
+                }
             }
         }
     }
 
     // MARK: - 数据加载
+
+    private func applyPreloadedData(_ data: PreloadedHomeData) {
+        domesticIndices = data.domesticIndices
+        globalIndices = data.globalIndices
+        hotSectors = data.hotSectors
+
+        let score = deriveSentimentScore(from: domesticIndices)
+        marketSentiment = MarketSentiment(
+            score: score,
+            label: sentimentLabel(for: score),
+            reason: "大盘温和震荡，热点板块轮动。"
+        )
+        // 预加载数据不携带 AI 晨报内容，进入首页后再异步拉取
+        aiMorningBrief = nil
+    }
 
     private func loadAllData(forceRefresh: Bool = false) async {
         isLoading = true
@@ -43,9 +63,8 @@ struct HomeView: View {
 
         async let domesticTask = StockService.fetchDomesticIndices(policy: policy)
         async let globalTask = StockService.fetchGlobalIndices(policy: policy)
-        async let hsgtTask = MarketService.fetchHsgtFlow(limit: 5, policy: policy)
-        async let sectorsTask = StockService.fetchSectorMoneyflow(sectorType: .industry, limit: 8, policy: policy)
-        async let quoteTask = DailyQuoteService.fetchTodayQuote(policy: policy)
+        async let hotSectorsTask = StockService.fetchSectorMoneyflow(sectorType: .industry, limit: 12, policy: policy)
+        async let morningReportTask = AiMorningReportService.fetchLatestAvailableReport()
 
         do { domesticIndices = try await domesticTask } catch { if error is CancellationError { return }; print("[Home] 国内指数加载失败: \(error)") }
         do {
@@ -53,263 +72,164 @@ struct HomeView: View {
             let coreGlobalCodes: Set<String> = ["DJI", "SPX", "IXIC", "HSI", "N225"]
             globalIndices = global.filter { coreGlobalCodes.contains($0.tsCode ?? "") }
         } catch { if error is CancellationError { return }; print("[Home] 全球指数加载失败: \(error)") }
-        do { hsgtFlow = try await hsgtTask } catch { if error is CancellationError { return }; print("[Home] 北向资金加载失败: \(error)") }
         do {
-            let resp = try await sectorsTask
+            let resp = try await hotSectorsTask
             hotSectors = resp.sectors
-        } catch { if error is CancellationError { return }; print("[Home] 板块加载失败: \(error)") }
-        do { dailyQuote = try await quoteTask } catch { if error is CancellationError { return }; print("[Home] 每日一言加载失败: \(error)") }
+        } catch { if error is CancellationError { return }; print("[Home] 热门板块加载失败: \(error)") }
+
+        // TODO: 接入真实市场情绪 API 后替换为服务端数据
+        let score = deriveSentimentScore(from: domesticIndices)
+        marketSentiment = MarketSentiment(
+            score: score,
+            label: sentimentLabel(for: score),
+            reason: "大盘温和震荡，热点板块轮动。"
+        )
+
+        do {
+            let report = try await morningReportTask
+            await applyMorningReport(report)
+        } catch {
+            if error is CancellationError { return }
+            print("[Home] AI 晨报加载失败: \(error)")
+            aiMorningBrief = nil
+            aiMorningBriefDate = nil
+        }
+    }
+
+    private func loadMorningReport() async {
+        do {
+            let report = try await AiMorningReportService.fetchLatestAvailableReport()
+            await applyMorningReport(report)
+        } catch {
+            if error is CancellationError { return }
+            print("[Home] AI 晨报加载失败: \(error)")
+            aiMorningBrief = nil
+            aiMorningBriefDate = nil
+        }
+    }
+
+    @MainActor
+    private func applyMorningReport(_ report: AiMorningReportItem) {
+        if report.status == "success" {
+            aiMorningBrief = report.summary ?? report.content
+            aiMorningBriefDate = report.reportDate
+        } else {
+            aiMorningBrief = nil
+            aiMorningBriefDate = nil
+        }
+    }
+
+    private func deriveSentimentScore(from indices: [IndexItem]) -> Int {
+        guard !indices.isEmpty else { return 50 }
+        let rising = indices.filter { $0.change >= 0 }.count
+        let ratio = Double(rising) / Double(indices.count)
+        return Int((ratio * 100).rounded())
+    }
+
+    private func sentimentLabel(for score: Int) -> String {
+        switch score {
+        case 0..<30: return "悲观"
+        case 30..<50: return "谨慎"
+        case 50..<70: return "中性偏多"
+        default: return "乐观"
+        }
+    }
+
+    // MARK: - 市场情绪
+
+    private var marketSentimentSection: some View {
+        MarketSentimentCard(sentiment: marketSentiment)
     }
 
     // MARK: - AI 晨报
 
     private var aiMorningBriefSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeaderView(icon: "brain", title: "AI 晨报", color: YPColor.ai, trailing: "今日")
-
-            VStack(alignment: .leading, spacing: 0) {
-                briefItem(icon: "doc.text", title: "市场总结", description: "AI 自动生成今日市场概况")
-                Divider().padding(.leading, 40)
-                briefItem(icon: "chart.pie", title: "建议仓位", description: "基于市场情绪的仓位建议")
-                Divider().padding(.leading, 40)
-                briefItem(icon: "flame", title: "热点板块", description: "今日资金流入最多的板块")
-                Divider().padding(.leading, 40)
-                briefItem(icon: "exclamationmark.triangle", title: "风险提示", description: "需要关注的风险因素")
-                Divider().padding(.leading, 40)
-                briefItem(icon: "globe", title: "国际市场", description: "隔夜外盘走势总结")
-            }
-            .padding(.vertical, 4)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    private func briefItem(icon: String, title: String, description: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.subheadline)
-                .foregroundStyle(YPColor.ai)
-                .frame(width: 28, height: 28)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.caption2)
-                .foregroundStyle(.quaternary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-    }
-
-    // MARK: - 每日一言
-
-    private var dailyQuoteSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeaderView(icon: "quote.bubble", title: "每日一言", color: YPColor.info)
-
-            if let quote = dailyQuote {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("“\(quote.content)”")
-                        .font(.body)
-                        .lineSpacing(4)
-
-                    if let author = quote.author, !author.isEmpty {
-                        HStack {
-                            Spacer()
-                            Text("—— \(author)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .padding()
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-        }
-    }
-
-    // MARK: - 市场概览（单行指数跑马灯）
-
-    private var marketOverviewSection: some View {
         NavigationLink {
-            IndicesListView()
+            MorningReportView()
         } label: {
-            HStack(spacing: 10) {
-                // 左侧固定标签
-                HStack(spacing: 4) {
-                    Image(systemName: "globe")
-                        .font(.caption2)
-                        .foregroundStyle(YPColor.accent)
-                    Text("全球股市")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(YPColor.accent)
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundStyle(YPColor.accent)
-                }
-
-                if domesticIndices.isEmpty && globalIndices.isEmpty {
-                    // 骨架屏
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color(.tertiarySystemFill))
-                        .frame(height: 14)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    let indices = globalIndices + domesticIndices
-                    IndexMarqueeView(indices: indices)
-                        .frame(height: 24)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            AIMorningBriefCard(summary: aiMorningBrief, reportDate: aiMorningBriefDate)
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - 北向资金
+    // MARK: - 市场概览
 
-    private var northFlowSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeaderView(icon: "arrow.up.arrow.down.circle", title: "北向资金", color: YPColor.info)
+    private var marketOverviewSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeaderView(icon: "chart.bar", title: "市场概览", color: YPColor.market)
 
-            if let today = hsgtFlow.first {
-                let yesterday = hsgtFlow.count > 1 ? hsgtFlow[1] : nil
-                let todayNet = today.northMoney ?? 0
-                let yesterdayNet = yesterday?.northMoney ?? 0
-                let dailyChange = todayNet - yesterdayNet
-
-                HStack(spacing: 12) {
-                    // 今日净流入
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("今日合计")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(today.northMoneyFormatted)
-                            .font(.title3)
-                            .fontWeight(.bold)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                    // 日变化
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("日变化")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(String(format: "%+.1f亿", dailyChange / 10000.0))
-                            .font(.title3)
-                            .fontWeight(.bold)
-                            .foregroundStyle(dailyChange >= 0 ? YPColor.up : YPColor.down)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-
-                // 沪股通 / 深股通 明细
-                HStack(spacing: 12) {
-                    flowDetailItem(title: "沪股通", value: today.hgt)
-                    flowDetailItem(title: "深股通", value: today.sgt)
-                }
-            } else {
-                PlaceholderCard(
-                    icon: "arrow.up.arrow.down",
-                    title: "暂无数据",
-                    description: "北向资金数据暂时为空",
-                    color: YPColor.info
-                )
-            }
-        }
-    }
-
-    private func flowDetailItem(title: String, value: Double?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if let v = value {
-                Text(String(format: "%.1f亿", v / 10000.0))
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-            } else {
-                Text("--")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    // MARK: - 热点板块
-
-    private var hotSectorsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
             NavigationLink {
-                AllSectorsView()
+                IndicesListView()
             } label: {
-                SectionHeaderView(icon: "flame", title: "热点板块", color: YPColor.warning, trailing: "查看全部")
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "globe")
+                            .font(.caption2)
+                            .foregroundStyle(YPColor.market)
+                        Text("全球股市")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(YPColor.market)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(YPColor.market)
+                    }
+                    .frame(height: 24, alignment: .center)
+
+                    if domesticIndices.isEmpty && globalIndices.isEmpty {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color(.tertiarySystemFill))
+                            .frame(height: 14)
+                            .frame(maxWidth: .infinity)
+                            .frame(maxHeight: .infinity, alignment: .center)
+                    } else {
+                        let indices = globalIndices + domesticIndices
+                        IndexMarqueeView(indices: indices)
+                            .frame(height: 24)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .clipped()
+                    }
+                }
+                .frame(height: 34)
+                .padding(.horizontal, 12)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
+        }
+    }
 
-            if hotSectors.isEmpty {
-                VStack(spacing: 6) {
-                    ForEach(0..<5) { _ in
-                        HStack {
-                            RoundedRectangle(cornerRadius: 3)
+    // MARK: - 热门板块
+
+    private var hotSectorsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeaderView(icon: "flame", title: "热门板块", color: YPColor.hot)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    if hotSectors.isEmpty {
+                        ForEach(0..<3) { _ in
+                            RoundedRectangle(cornerRadius: 12)
                                 .fill(Color(.tertiarySystemFill))
-                                .frame(width: 60, height: 14)
-                            Spacer()
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color(.tertiarySystemFill))
-                                .frame(width: 50, height: 14)
+                                .frame(width: 140, height: 110)
                         }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 12)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else {
+                        ForEach(Array(hotSectors.prefix(10).enumerated()), id: \.element.id) { index, sector in
+                            NavigationLink {
+                                SectorDetailView(sector: sector, isConcept: false)
+                            } label: {
+                                HotSectorHorizontalCard(sector: sector, rank: index + 1)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
-            } else {
-                VStack(spacing: 6) {
-                    ForEach(Array(hotSectors.prefix(8).enumerated()), id: \.element.id) { index, sector in
-                        NavigationLink {
-                            SectorDetailView(sector: sector, isConcept: false)
-                        } label: {
-                            SectorRow(
-                                index: index,
-                                name: sector.name,
-                                leadStock: sector.leadStock,
-                                pctChange: sector.pctChange,
-                                netAmount: sector.netAmount
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+                .padding(.horizontal, 4)
             }
         }
     }
 }
 
 #Preview {
-    HomeView()
+    HomeView(preloadedData: nil)
 }

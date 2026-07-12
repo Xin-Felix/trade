@@ -10,6 +10,7 @@ struct IndexMarqueeView: UIViewRepresentable {
         scrollView.isUserInteractionEnabled = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.backgroundColor = .clear
+        scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         let container = UIStackView()
@@ -38,6 +39,12 @@ struct IndexMarqueeView: UIViewRepresentable {
             container.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
             container.heightAnchor.constraint(equalTo: scrollView.heightAnchor)
         ])
+
+        // 让 StackView 根据内容自然高度在滚动视图内垂直居中，避免字体视觉中心偏移
+        for subview in container.arrangedSubviews {
+            subview.setContentHuggingPriority(.required, for: .vertical)
+            subview.setContentCompressionResistancePriority(.required, for: .vertical)
+        }
 
         context.coordinator.scrollView = scrollView
         context.coordinator.container = container
@@ -161,6 +168,7 @@ struct IndexMarqueeView: UIViewRepresentable {
     private func makeItemLabel(index: IndexItem) -> UILabel {
         let label = UILabel()
         label.attributedText = attributedString(for: index)
+        label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
@@ -170,8 +178,9 @@ struct IndexMarqueeView: UIViewRepresentable {
     private func makeSeparator() -> UILabel {
         let label = UILabel()
         label.text = "  |  "
-        label.font = UIFont.systemFont(ofSize: 11)
+        label.font = UIFont.systemFont(ofSize: 12)
         label.textColor = .secondaryLabel
+        label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }

@@ -147,10 +147,42 @@ enum StockService {
     }
 
     /// 添加持仓
-    static func addToPortfolio(code: String, name: String, note: String? = nil) async throws -> PortfolioItem {
+    static func addToPortfolio(
+        code: String,
+        name: String,
+        costPrice: Double? = nil,
+        quantity: Double? = nil,
+        isMargin: Bool? = nil,
+        note: String? = nil
+    ) async throws -> PortfolioItem {
         let url = APIConfiguration.shared.apiV1URL + "/stocks/portfolio"
-        let body = PortfolioAddBody(code: code, name: name, note: note)
+        let body = PortfolioAddBody(
+            code: code,
+            name: name,
+            costPrice: costPrice,
+            quantity: quantity,
+            isMargin: isMargin,
+            note: note
+        )
         return try await NetworkService.shared.request(url, method: .post, body: body)
+    }
+
+    /// 更新持仓
+    static func updatePortfolio(
+        code: String,
+        costPrice: Double? = nil,
+        quantity: Double? = nil,
+        isMargin: Bool? = nil,
+        note: String? = nil
+    ) async throws -> PortfolioItem {
+        let url = APIConfiguration.shared.apiV1URL + "/stocks/portfolio/\(code)"
+        let body = PortfolioUpdateBody(
+            costPrice: costPrice,
+            quantity: quantity,
+            isMargin: isMargin,
+            note: note
+        )
+        return try await NetworkService.shared.request(url, method: .patch, body: body)
     }
 
     /// 删除持仓
@@ -161,25 +193,32 @@ enum StockService {
 
     /// 获取分时 K 线数据（1/5/15/30/60 分钟）
     static func fetchIntradayKlines(code: String, period: String = "1", limit: Int = 241, tradeDate: String? = nil, policy: CachePolicy = .default) async throws -> [IntradayKlineData] {
-        var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/intraday/\(code)")!
-        var queryItems = [
-            URLQueryItem(name: "period", value: period),
-            URLQueryItem(name: "limit", value: String(limit))
-        ]
-        if let date = tradeDate {
-            queryItems.append(URLQueryItem(name: "trade_date", value: date))
+        if let tradeDate = tradeDate {
+            return try await fetchIntradayKlinesRaw(code: code, period: period, limit: limit, tradeDate: tradeDate)
         }
-        components.queryItems = queryItems
 
+        let (items, _) = try await MarketDataRequest.fetchWithTradeDateFallback(
+            keyPrefix: "intraday_\(code)_\(period)_\(limit)",
+            policy: policy,
+            ttl: .untilNextTradingDay,
+            shouldFallback: { $0.isEmpty }
+        ) { date in
+            try await fetchIntradayKlinesRaw(code: code, period: period, limit: limit, tradeDate: date)
+        }
+        return items
+    }
+
+    private static func fetchIntradayKlinesRaw(code: String, period: String, limit: Int, tradeDate: String) async throws -> [IntradayKlineData] {
+        var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/intraday/\(code)")!
+        components.queryItems = [
+            URLQueryItem(name: "period", value: period),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "trade_date", value: tradeDate)
+        ]
         guard let url = components.url?.absoluteString else {
             throw APIError.invalidURL
         }
-
-        let date = tradeDate ?? MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate())
-        let key = "intraday_\(code)_\(period)_\(limit)_\(date)"
-        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
-            try await NetworkService.shared.request(url)
-        }
+        return try await NetworkService.shared.request(url)
     }
 
     /// 获取股票日线因子数据（PE/PB/换手率等）
@@ -324,9 +363,14 @@ enum WatchlistService {
     }
 
     /// 添加自选股（先更新本地缓存，再异步同步后端）
-    static func add(code: String, name: String) {
+    static func add(code: String, name: String) -> Bool {
+        let limit = 20
         var items = load()
-        guard !items.contains(where: { $0.code == code }) else { return }
+        guard !items.contains(where: { $0.code == code }) else { return true }
+        guard items.count < limit else {
+            print("[WatchlistService] 自选股数量已达上限 \(limit) 只，建议精简票池后再添加")
+            return false
+        }
         items.append(WatchlistItem(code: code, name: name))
         save(items)
 
@@ -338,6 +382,7 @@ enum WatchlistService {
                 print("[WatchlistService] 添加自选股到后端失败: \(error.localizedDescription)")
             }
         }
+        return true
     }
 
     /// 删除自选股（先更新本地缓存，再异步同步后端）

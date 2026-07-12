@@ -9,19 +9,24 @@
 - 各模块占位页面搭建完成
 
 ### 2. 首页 (HomeView)
-- **大盘指数** — 接口 `/stocks/indices`，实时显示上证/深证/创业板点位和涨跌幅
-- **北向资金** — 接口 `/stocks/moneyflow-hsgt`，今日合计、日变化、沪股通/深股通
-- **热点板块** — 接口 `/stocks/sector-moneyflow`，资金流入排行 TOP8
-- 市场概览旁"查看全部" → 大盘指数列表页 (`IndicesListView`) → 单个指数详情 (`IndexDetailView`)
-- 热点板块旁"查看全部" → 全部板块排行页 (`AllSectorsView`) → 板块详情 + 成分股列表 (`SectorDetailView`)
+- **市场情绪** — 基于大盘指数涨跌比例生成的情绪分数（占位，待接真实情绪 API）
+- **AI 晨报** — 渐变卡片展示 AI 总结段落（占位，待接 AI 晨报 API）
+- **市场概览** — 接口 `/stocks/indices`，指数跑马灯实时显示上证/深证/创业板/全球主要指数
+- **我的自选** — 接口 `/stocks/watchlist`，展示前 5 只自选股行情
+- **资金流向** — 接口 `/stocks/moneyflow-hsgt`，北向资金今日合计、日变化、沪股通/深股通
+- 市场概览旁"全球股市" → 大盘指数列表页 (`IndicesListView`)
 
 ### 3. 市场 (MarketView)
 - **股票搜索** — 本地缓存 + 拼音/代码/名称模糊搜索
-- **板块中心**：
-  - 每日资金流向 — 原有的 `SectorMoneyflowTrendView`（按天趋势折线图）
-  - 分时资金流向 — 新开发的 `SectorIntradayFlowView`（气泡动画 + 播放器）
-- **龙虎榜** — 接口 `/stocks/top-list`，今日上榜个股列表
-- 板块关联分析 / 个股异动 — 占位
+- **市场分类切换** — A股 / 港股 / 美股 / ETF / 指数（港股/美股/ETF 当前占位）
+- **热门板块** — 接口 `/stocks/sector-moneyflow`，横向滚动展示行业板块 TOP10
+- **资金流向** — 接口 `/stocks/moneyflow-hsgt`，支持 北向/行业/概念 三个子标签
+- **深度复盘**：
+  - 涨停梯队 — `LimitUpLadderView`
+  - 龙虎榜 — `TopListView`（接口 `/stocks/top-list`）
+  - 个股异动 — `UnusualMovesView`（占位）
+  - 板块关联分析 — `SectorCorrelationView`（占位）
+- **更多菜单** — 保留所有历史入口：大盘指数、全部板块、资金流动态趋势、分时资金流向、积分、会员、小组件、接口测试、帮助反馈
 
 ### 4. 分时资金气泡流动画 (MoneyFlowBubbleView)
 - 气泡大小 = 资金量，Y轴位置 = 流入在上/流出在下
@@ -141,12 +146,25 @@ YingPlus/
 │   ├── SettingsView.swift             ← 我的 + 设置 + 关于 + 积分入口
 │   ├── ProfileEditView.swift          ← 编辑资料
 │   ├── ImageCropView.swift            ← 正方形裁切
+│   ├── Common/                        ← 首页/市场页复用组件
+│   │   ├── MarketSentimentCard.swift
+│   │   ├── AIMorningBriefCard.swift
+│   │   ├── GlobalMarketCard.swift
+│   │   ├── HotSectorHorizontalCard.swift
+│   │   ├── MarketMenuRow.swift
+│   │   ├── WatchlistMiniRow.swift
+│   │   ├── SectorRow.swift
+│   │   ├── IndexMarqueeView.swift
+│   │   └── LoadingStateView.swift
 │   ├── Points/
 │   │   ├── PointsView.swift           ← 积分主页
 │   │   └── PointsHistoryView.swift    ← 积分记录
 │   ├── MembershipView.swift           ← 会员中心
 │   ├── H5PageView.swift               ← H5 内容展示
 │   ├── LimitUpLadderView.swift        ← 涨停梯队
+│   ├── TopListView.swift              ← 龙虎榜
+│   ├── UnusualMovesView.swift         ← 个股异动（占位）
+│   ├── SectorCorrelationView.swift    ← 板块关联分析（占位）
 │   ├── SectorMemberListView.swift     ← 板块成分股列表
 │   ├── StockDetailView.swift
 │   ├── KLineChartView.swift
@@ -170,7 +188,9 @@ YingPlus/
 
 - [ ] 分时资金流向接口对接（替换 mock 数据）
 - [ ] AI 中心功能（AI 晨报 / 个股分析 / 公告解读）
-- [ ] 国际市场行情数据
+- [ ] AI 晨报接口（首页 AI 晨报卡片真实数据）
+- [ ] 市场情绪接口（真实情绪分数）
+- [ ] 港股 / 美股 / ETF 行情数据
 - [ ] 个股异动
 - [ ] 板块关联分析
 - [ ] 持仓管理

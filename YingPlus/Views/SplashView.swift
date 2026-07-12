@@ -1,0 +1,199 @@
+import SwiftUI
+
+// MARK: - 启动屏
+
+struct SplashView: View {
+    let onComplete: (PreloadedHomeData?, String?) -> Void
+
+    @State private var dailyQuote: DailyQuoteData?
+
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
+
+            VStack(spacing: 28) {
+                Spacer()
+
+                VStack(spacing: 16) {
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 88, height: 88)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                    Text("盈多多")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(YPColor.brandGradient)
+                }
+
+                if let quote = dailyQuote {
+                    VStack(spacing: 10) {
+                        Text(quote.content)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(4)
+                            .padding(.horizontal, 40)
+
+                        if let author = quote.author, !author.isEmpty {
+                            Text("—— \(author)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else {
+                    VStack(spacing: 10) {
+                        Text("投资是一场修行，耐心是最好的策略。")
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(4)
+                            .padding(.horizontal, 40)
+
+                        ProgressView()
+                            .scaleEffect(0.9)
+                            .tint(YPColor.brandBlue)
+                            .padding(.top, 8)
+                    }
+                    .transition(.opacity)
+                }
+
+                Spacer()
+
+                Text("数据加载中…")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.bottom, 24)
+            }
+        }
+        .task {
+            await bootstrap()
+        }
+    }
+
+    // MARK: - 启动流程
+
+    private func bootstrap() async {
+        let start = Date()
+        let autoLoginError = await ensureLogin()
+
+        // 并发加载每日一言和首页数据
+        let loadTask = Task {
+            async let quote = loadDailyQuote()
+            async let homeData = loadHomeData()
+            return await (quote, homeData)
+        }
+
+        // 3 秒超时哨兵：超过则取消预加载，用已拿到的数据进入首页
+        let timeoutTask = Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            loadTask.cancel()
+        }
+
+        let (quote, homeData): (DailyQuoteData?, PreloadedHomeData)
+        do {
+            (quote, homeData) = try await loadTask.value
+        } catch {
+            (quote, homeData) = (nil, PreloadedHomeData(domesticIndices: [], globalIndices: [], watchlist: [], hotSectors: [], dailyQuote: nil))
+            print("[Splash] 预加载超时或被取消")
+        }
+        timeoutTask.cancel()
+
+        await MainActor.run {
+            self.dailyQuote = quote
+        }
+
+        // 保证至少展示 1.5 秒，但整个启动屏不超过 3 秒
+        let elapsed = Date().timeIntervalSince(start)
+        let remaining = max(0, 1.5 - elapsed)
+        if remaining > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+        }
+
+        let result = PreloadedHomeData(
+            domesticIndices: homeData.domesticIndices,
+            globalIndices: homeData.globalIndices,
+            watchlist: homeData.watchlist,
+            hotSectors: homeData.hotSectors,
+            dailyQuote: quote
+        )
+
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                onComplete(result, autoLoginError)
+            }
+        }
+    }
+
+    private func ensureLogin() async -> String? {
+        guard NetworkService.shared.getAuthToken() == nil else { return nil }
+        do {
+            _ = try await AuthService.loginWithTestAccount()
+            return nil
+        } catch {
+            return "自动登录失败: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadDailyQuote() async -> DailyQuoteData? {
+        do {
+            return try await DailyQuoteService.fetchTodayQuote()
+        } catch {
+            print("[Splash] 每日一言加载失败: \(error)")
+            return nil
+        }
+    }
+
+    private func loadHomeData() async -> PreloadedHomeData {
+        async let domesticTask = fetchCatching(
+            try await StockService.fetchDomesticIndices(policy: .default),
+            default: [],
+            label: "国内指数"
+        )
+        async let globalTask = fetchCatching(
+            try await StockService.fetchGlobalIndices(policy: .default),
+            default: [],
+            label: "全球指数"
+        )
+        async let watchlistTask = fetchCatching(
+            try await StockService.fetchWatchlist(),
+            default: [],
+            label: "自选"
+        )
+        async let hotSectorsTask = fetchCatching(
+            try await StockService.fetchSectorMoneyflow(sectorType: .industry, limit: 12, policy: .default).sectors,
+            default: [],
+            label: "热门板块"
+        )
+
+        let (domestic, global, watchlist, hotSectors) = await (domesticTask, globalTask, watchlistTask, hotSectorsTask)
+
+        let coreGlobalCodes: Set<String> = ["DJI", "SPX", "IXIC", "HSI", "N225"]
+        let filteredGlobal = global.filter { coreGlobalCodes.contains($0.tsCode ?? "") }
+
+        return PreloadedHomeData(
+            domesticIndices: domestic,
+            globalIndices: filteredGlobal,
+            watchlist: watchlist,
+            hotSectors: hotSectors,
+            dailyQuote: nil
+        )
+    }
+
+    private func fetchCatching<T>(_ operation: @autoclosure () async throws -> T, default defaultValue: T, label: String) async -> T {
+        do {
+            return try await operation()
+        } catch {
+            if !(error is CancellationError) {
+                print("[Splash] \(label) 预加载失败: \(error)")
+            }
+            return defaultValue
+        }
+    }
+}
+
+#Preview {
+    SplashView { _, _ in }
+}

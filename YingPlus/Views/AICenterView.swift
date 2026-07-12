@@ -9,6 +9,7 @@ struct AICenterView: View {
                     aiHeaderBanner
 
                     VStack(spacing: 14) {
+                        aiDailyReviewSection
                         aiMarketAnalysisSection
                         aiStockAnalysisSection
                         aiAnnouncementSection
@@ -46,6 +47,22 @@ struct AICenterView: View {
         .padding()
         .background(YPColor.brandGradient)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - AI 每日复盘
+
+    private var aiDailyReviewSection: some View {
+        NavigationLink(destination: DailyReviewView()) {
+            aiFeatureCard(
+                icon: "newspaper.fill",
+                title: "AI 每日复盘",
+                description: "基于自选股生成每日收盘复盘（会员专属）",
+                color: YPColor.brandPurple,
+                tags: ["自选股", "每日复盘", "会员专属"],
+                available: true
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - AI 市场分析
@@ -110,7 +127,14 @@ struct AICenterView: View {
 
     // MARK: - 通用 AI 功能卡片
 
-    private func aiFeatureCard(icon: String, title: String, description: String, color: Color, tags: [String]) -> some View {
+    private func aiFeatureCard(
+        icon: String,
+        title: String,
+        description: String,
+        color: Color,
+        tags: [String],
+        available: Bool = false
+    ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
@@ -132,9 +156,11 @@ struct AICenterView: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.quaternary)
+                if available {
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.quaternary)
+                }
             }
 
             HStack(spacing: 6) {
@@ -150,9 +176,15 @@ struct AICenterView: View {
 
                 Spacer()
 
-                Label("功能开发中", systemImage: "sparkles")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                if available {
+                    Label("会员专享", systemImage: "crown.fill")
+                        .font(.caption2)
+                        .foregroundStyle(YPColor.brandPurple)
+                } else {
+                    Label("功能开发中", systemImage: "sparkles")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .padding(14)

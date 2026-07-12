@@ -458,10 +458,9 @@ let rank = try await StockService.fetchSectorMoneyflow(sectorType: .industry, li
 
 **iOS 展示建议：**
 
-- 行情页新增「板块资金流向」入口，默认展示行业净流入 TOP 20
-- 支持切换「行业/概念」Tab
-- 支持按净流入、涨跌幅排序
-- 点击板块可跳转板块详情（后续可接成分股列表）
+- 市场页「热门板块」横向滚动展示行业净流入 TOP 10
+- 市场页「资金流向」行业/概念标签展示净流入 TOP 5
+- 点击板块跳转板块详情（`SectorDetailView`）
 
 ---
 
@@ -528,7 +527,7 @@ let trend = try await StockService.fetchSectorMoneyflowTrend(
 
 **iOS 展示建议：**
 
-- 行情页「板块资金流向」内新增「资金流动态趋势」入口
+- 市场页「更多」菜单中「资金流动态趋势」入口
 - 选择时间段后展示多折线图
 - 支持「当日净流入 / 累计净流入」切换
 - 支持按净流入、累计净流入、涨跌幅、名称排序
@@ -734,6 +733,8 @@ iOS 端模型已使用 `CodingKeys` 做好映射，调用时直接使用 Swift �
 
 | 功能 | 预计接口 | 说明 |
 |---|---|---|
+| AI 晨报 | `GET /ai/morning-brief` | 每日开盘前生成自然语言市场总结 |
+| 市场情绪 | `GET /ai/market-sentiment` | 基于多维度数据返回 0-100 情绪分数与标签 |
 | 录入持仓 | `POST /portfolio` | 记录成本价、数量 |
 | 修改持仓 | `PUT /portfolio/{code}` | 更新成本/数量 |
 | 删除持仓 | `DELETE /portfolio/{code}` | 清仓 |

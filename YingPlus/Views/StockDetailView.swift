@@ -23,6 +23,8 @@ struct StockDetailView: View {
     @State private var watchlistUpdateFlag = 0
     @State private var portfolioUpdateFlag = 0
     @State private var isInPortfolio = false
+    @State private var currentPortfolioItem: PortfolioItem?
+    @State private var showingPortfolioSheet = false
     @State private var selectedDetailTab: DetailTab = .indicators
 
     // MARK: - V1.0 规划模块
@@ -119,14 +121,59 @@ struct StockDetailView: View {
 
                 Spacer()
 
-                Button {
-                    togglePortfolio()
-                } label: {
-                    Image(systemName: isInPortfolio ? "briefcase.fill" : "briefcase")
-                        .font(.title3)
-                        .foregroundStyle(isInPortfolio ? YPColor.accent : Color.gray)
+                if isInPortfolio {
+                    Menu {
+                        Button {
+                            showingPortfolioSheet = true
+                        } label: {
+                            Label("编辑持仓", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            Task { await removeFromPortfolio() }
+                        } label: {
+                            Label("删除持仓", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "briefcase.fill")
+                            .font(.title3)
+                            .foregroundStyle(YPColor.accent)
+                    }
+                    .sheet(isPresented: $showingPortfolioSheet) {
+                        PortfolioEditSheet(
+                            code: code,
+                            name: name,
+                            existingItem: currentPortfolioItem,
+                            onSave: {
+                                Task {
+                                    await loadPortfolioStatus()
+                                    portfolioUpdateFlag += 1
+                                }
+                            }
+                        )
+                    }
+                } else {
+                    Button {
+                        showingPortfolioSheet = true
+                    } label: {
+                        Image(systemName: "briefcase")
+                            .font(.title3)
+                            .foregroundStyle(Color.gray)
+                    }
+                    .buttonStyle(.plain)
+                    .sheet(isPresented: $showingPortfolioSheet) {
+                        PortfolioEditSheet(
+                            code: code,
+                            name: name,
+                            existingItem: nil,
+                            onSave: {
+                                Task {
+                                    await loadPortfolioStatus()
+                                    portfolioUpdateFlag += 1
+                                }
+                            }
+                        )
+                    }
                 }
-                .buttonStyle(.plain)
 
                 Button {
                     toggleWatchlist()
@@ -246,36 +293,40 @@ struct StockDetailView: View {
     private func toggleWatchlist() {
         if isInWatchlist {
             WatchlistService.remove(code: code)
+            watchlistUpdateFlag += 1
         } else {
-            WatchlistService.add(code: code, name: name)
+            let added = WatchlistService.add(code: code, name: name)
+            if added {
+                watchlistUpdateFlag += 1
+            } else {
+                errorMessage = "自选股最多 20 只，建议精简票池后再添加"
+            }
         }
-        watchlistUpdateFlag += 1
     }
 
     private func loadPortfolioStatus() async {
         do {
             let portfolio = try await StockService.fetchPortfolio()
-            isInPortfolio = portfolio.contains { $0.code == code }
+            currentPortfolioItem = portfolio.first { $0.code == code }
+            isInPortfolio = currentPortfolioItem != nil
         } catch {
             if error is CancellationError { return }
             print("[StockDetail] 加载持仓状态失败: \(error.localizedDescription)")
         }
     }
 
-    private func togglePortfolio() {
-        Task {
-            do {
-                if isInPortfolio {
-                    try await StockService.removeFromPortfolio(code: code)
-                } else {
-                    _ = try await StockService.addToPortfolio(code: code, name: name)
-                }
-                await loadPortfolioStatus()
-                portfolioUpdateFlag += 1
-            } catch {
-                print("[StockDetail] 切换持仓失败: \(error.localizedDescription)")
-            }
+    private func removeFromPortfolio() async {
+        do {
+            try await StockService.removeFromPortfolio(code: code)
+            await loadPortfolioStatus()
+            portfolioUpdateFlag += 1
+        } catch {
+            print("[StockDetail] 删除持仓失败: \(error.localizedDescription)")
         }
+    }
+
+    private func togglePortfolio() {
+        showingPortfolioSheet = true
     }
 
     private var selectedKlineChangePercent: Double? {

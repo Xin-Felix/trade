@@ -26,42 +26,64 @@ enum MarketService {
 
     /// 获取龙虎榜每日明细
     static func fetchTopList(tradeDate: String? = nil, limit: Int = 20, policy: CachePolicy = .default) async throws -> [TopListItem] {
-        var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/top-list")!
-        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
-        let date = tradeDate ?? MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate())
-        queryItems.append(URLQueryItem(name: "trade_date", value: date))
-        components.queryItems = queryItems
-
-        guard let url = components.url?.absoluteString else {
-            throw APIError.invalidURL
+        if let tradeDate = tradeDate {
+            let response = try await fetchTopListRaw(tradeDate: tradeDate, limit: limit)
+            return response.items
         }
 
-        let key = "toplist_\(date)_\(limit)"
-        let response: TopListResponse = try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
-            try await NetworkService.shared.request(url)
+        let (response, _) = try await MarketDataRequest.fetchWithTradeDateFallback(
+            keyPrefix: "toplist_\(limit)",
+            policy: policy,
+            ttl: .untilNextTradingDay,
+            shouldFallback: { $0.items.isEmpty }
+        ) { date in
+            try await fetchTopListRaw(tradeDate: date, limit: limit)
         }
         return response.items
     }
 
+    private static func fetchTopListRaw(tradeDate: String, limit: Int) async throws -> TopListResponse {
+        var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/top-list")!
+        components.queryItems = [
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "trade_date", value: tradeDate)
+        ]
+        guard let url = components.url?.absoluteString else {
+            throw APIError.invalidURL
+        }
+        let response: TopListResponse = try await NetworkService.shared.request(url)
+        return response
+    }
+
     /// 获取龙虎榜机构明细
     static func fetchTopInst(tradeDate: String? = nil, code: String? = nil, limit: Int = 20, policy: CachePolicy = .default) async throws -> [TopInstItem] {
+        if let tradeDate = tradeDate {
+            return try await fetchTopInstRaw(tradeDate: tradeDate, code: code, limit: limit)
+        }
+
+        let (items, _) = try await MarketDataRequest.fetchWithTradeDateFallback(
+            keyPrefix: "topinst_\(code ?? "all")_\(limit)",
+            policy: policy,
+            ttl: .untilNextTradingDay,
+            shouldFallback: { $0.isEmpty }
+        ) { date in
+            try await fetchTopInstRaw(tradeDate: date, code: code, limit: limit)
+        }
+        return items
+    }
+
+    private static func fetchTopInstRaw(tradeDate: String, code: String?, limit: Int) async throws -> [TopInstItem] {
         var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/top-inst")!
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
-        let date = tradeDate ?? MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate())
-        queryItems.append(URLQueryItem(name: "trade_date", value: date))
+        queryItems.append(URLQueryItem(name: "trade_date", value: tradeDate))
         if let code = code {
             queryItems.append(URLQueryItem(name: "code", value: code))
         }
         components.queryItems = queryItems
-
         guard let url = components.url?.absoluteString else {
             throw APIError.invalidURL
         }
-
-        let key = "topinst_\(date)_\(code ?? "all")_\(limit)"
-        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
-            try await NetworkService.shared.request(url)
-        }
+        return try await NetworkService.shared.request(url)
     }
 
     // MARK: - 指数日线
@@ -179,21 +201,27 @@ enum MarketService {
 
     /// 获取涨停梯队数据
     static func fetchLimitUpLadder(tradeDate: String? = nil, policy: CachePolicy = .default) async throws -> LimitUpLadderResponse {
-        var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/limit-up-ladder")!
-        var queryItems = [URLQueryItem]()
-        let date = tradeDate ?? MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate())
-        queryItems.append(URLQueryItem(name: "trade_date", value: date))
-        if !queryItems.isEmpty {
-            components.queryItems = queryItems
+        if let tradeDate = tradeDate {
+            return try await fetchLimitUpLadderRaw(tradeDate: tradeDate)
         }
 
+        let (response, _) = try await MarketDataRequest.fetchWithTradeDateFallback(
+            keyPrefix: "limitup",
+            policy: policy,
+            ttl: .untilNextTradingDay,
+            shouldFallback: { $0.ladder.isEmpty }
+        ) { date in
+            try await fetchLimitUpLadderRaw(tradeDate: date)
+        }
+        return response
+    }
+
+    private static func fetchLimitUpLadderRaw(tradeDate: String) async throws -> LimitUpLadderResponse {
+        var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/limit-up-ladder")!
+        components.queryItems = [URLQueryItem(name: "trade_date", value: tradeDate)]
         guard let url = components.url?.absoluteString else {
             throw APIError.invalidURL
         }
-
-        let key = "limitup_\(date)"
-        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
-            try await NetworkService.shared.request(url)
-        }
+        return try await NetworkService.shared.request(url)
     }
 }
