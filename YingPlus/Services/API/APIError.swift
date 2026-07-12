@@ -8,6 +8,13 @@ enum APIError: Error, Equatable, LocalizedError {
     case noData
     case unauthorized
     case serverError
+    case paymentRequired(
+        featureCode: String,
+        reason: String,
+        requiredPoints: Int,
+        requiredTier: String?,
+        balance: Int
+    )
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +35,8 @@ enum APIError: Error, Equatable, LocalizedError {
             return "登录已过期，请重新登录"
         case .serverError:
             return "服务器内部错误"
+        case .paymentRequired(_, let reason, _, _, _):
+            return reason
         }
     }
 }

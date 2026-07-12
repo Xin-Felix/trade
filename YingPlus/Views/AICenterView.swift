@@ -150,7 +150,7 @@ struct AICenterView: View {
 
                 Spacer()
 
-                Label("即将上线", systemImage: "sparkles")
+                Label("功能开发中", systemImage: "sparkles")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }

@@ -3,26 +3,58 @@ import SwiftUI
 /// 板块详情页 — 展示板块信息和成分股列表
 struct SectorDetailView: View {
     let sector: SectorMoneyflowData
+    let isConcept: Bool
 
-    @State private var members: [SectorMemberItem] = []
-    @State private var isLoading = false
-    @State private var selectedStock: SectorMemberItem?
+    init(sector: SectorMoneyflowData, isConcept: Bool = false) {
+        self.sector = sector
+        self.isConcept = isConcept
+    }
+
+    @State private var sectorInfo: SectorMoneyflowData?
+    @State private var isLoadingInfo = false
+    @State private var infoError: Error?
+
+    private var displaySector: SectorMoneyflowData {
+        sectorInfo ?? sector
+    }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 sectorInfoCard
-                memberListSection
+                descriptionCard
+                SectorMemberListView(sectorCode: sector.tsCode, isConcept: isConcept)
             }
             .padding()
         }
         .background(Color(.systemBackground).ignoresSafeArea())
-        .navigationTitle(sector.name ?? "板块详情")
+        .navigationTitle(displaySector.name ?? "板块详情")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await loadMembers() }
-        .task { await loadMembers() }
-        .navigationDestination(item: $selectedStock) { member in
-            StockDetailView(code: member.conCode, name: member.conName ?? member.conCode)
+        .task {
+            await loadSectorInfo()
+        }
+    }
+
+    private func loadSectorInfo() async {
+        guard sectorInfo == nil else { return }
+        isLoadingInfo = true
+        defer { isLoadingInfo = false }
+
+        do {
+            let sectorType: SectorMoneyflowType = isConcept ? .concept : .industry
+            let response = try await StockService.fetchSectorMoneyflow(
+                sectorType: sectorType,
+                tradeDate: sector.tradeDate.isEmpty ? nil : sector.tradeDate,
+                limit: 200,
+                policy: .default
+            )
+            if let matched = response.sectors.first(where: { $0.tsCode == sector.tsCode }) {
+                sectorInfo = matched
+            }
+        } catch {
+            if error is CancellationError { return }
+            infoError = error
+            print("[SectorDetail] 板块信息加载失败: \(error.localizedDescription)")
         }
     }
 
@@ -35,7 +67,7 @@ struct SectorDetailView: View {
                     Text("涨跌幅")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if let pct = sector.pctChange {
+                    if let pct = displaySector.pctChange {
                         Text(String(format: "%+.2f%%", pct))
                             .font(.title3)
                             .fontWeight(.bold)
@@ -51,7 +83,7 @@ struct SectorDetailView: View {
                     Text("净流入")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if let net = sector.netAmount {
+                    if let net = displaySector.netAmount {
                         Text(String(format: "%.1f亿", net))
                             .font(.title3)
                             .fontWeight(.bold)
@@ -67,7 +99,7 @@ struct SectorDetailView: View {
                     Text("成分股")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if let num = sector.companyNum {
+                    if let num = displaySector.companyNum {
                         Text("\(num)只")
                             .font(.title3)
                             .fontWeight(.bold)
@@ -79,7 +111,7 @@ struct SectorDetailView: View {
                 }
             }
 
-            if let lead = sector.leadStock, let pctStock = sector.pctChangeStock {
+            if let lead = displaySector.leadStock, let pctStock = displaySector.pctChangeStock {
                 HStack(spacing: 6) {
                     Text("龙头股:")
                         .font(.caption)
@@ -100,84 +132,44 @@ struct SectorDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - 成分股列表
-
-    private var memberListSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var descriptionCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("成分股")
-                    .font(.headline)
-                Spacer()
-                if isLoading {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                }
-                Text("\(members.count)只")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if members.isEmpty && !isLoading {
-                PlaceholderCard(icon: "list.bullet", description: "暂无成分股数据", color: .secondary)
-            } else {
-                ForEach(members) { member in
-                    Button {
-                        selectedStock = member
-                    } label: {
-                        memberRow(member)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private func memberRow(_ member: SectorMemberItem) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(member.conName ?? "--")
+                Text("简介")
                     .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-                Text(member.conCode)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .fontWeight(.bold)
+                Spacer()
             }
 
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.caption2)
-                .foregroundStyle(.quaternary)
+            Text("暂无简介")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding()
+        .frame(maxWidth: .infinity)
         .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    // MARK: - 数据加载
-
-    private func loadMembers() async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            members = try await MarketService.fetchSectorMembers(code: sector.tsCode)
-        } catch {
-            print("[SectorDetail] 成分股加载失败: \(error)")
-        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
-// Make SectorMemberItem conform to Hashable for navigationDestination
-extension SectorMemberItem: Hashable {
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(conCode)
-    }
-
-    static func == (lhs: SectorMemberItem, rhs: SectorMemberItem) -> Bool {
-        lhs.conCode == rhs.conCode
+#Preview {
+    NavigationStack {
+        SectorDetailView(
+            sector: SectorMoneyflowData(
+                tsCode: "885431",
+                tradeDate: "20260710",
+                name: "半导体",
+                leadStock: "中芯国际",
+                closePrice: nil,
+                pctChange: 2.35,
+                companyNum: 128,
+                pctChangeStock: 5.67,
+                netBuyAmount: nil,
+                netSellAmount: nil,
+                netAmount: 12.5
+            ),
+            isConcept: false
+        )
     }
 }
-
-

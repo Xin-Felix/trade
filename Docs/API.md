@@ -16,6 +16,7 @@
 - [模型映射参考](#模型映射参考)
 - [后续接口规划](#后续接口规划)
 - [新增接口](#新增接口)
+- [积分系统](#积分系统)
 - [相关文件](#相关文件)
 
 ## 通用约定
@@ -791,10 +792,166 @@ iOS 端模型已使用 `CodingKeys` 做好映射，调用时直接使用 Swift �
 - 指数 (14个)
 - 宏观/新闻 (14个)
 
+## 积分系统
+
+积分系统用于管理用户积分余额、积分明细，以及基于积分门槛的功能权限控制。所有接口均需登录。
+
+### GET /points/balance
+
+获取当前登录用户的积分汇总。
+
+**响应示例：**
+
+```json
+{
+  "success": true,
+  "data": {
+    "balance": 150,
+    "total_earned": 300,
+    "total_used": 150,
+    "updated_at": "2026-07-11T18:30:00"
+  }
+}
+```
+
+**字段说明：**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `balance` | int | 当前积分余额 |
+| `total_earned` | int | 累计获得积分 |
+| `total_used` | int | 累计使用积分 |
+| `updated_at` | string | 更新时间（ISO 8601） |
+
+**iOS 调用：**
+
+```swift
+let balance = try await PointsService.fetchBalance()
+```
+
+---
+
+### GET /points/records
+
+获取当前用户的积分变动明细。
+
+**查询参数：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `page` | int | 否 | 页码，默认 1 |
+| `page_size` | int | 否 | 每页条数，默认 20，最大 100 |
+
+**响应示例：**
+
+```json
+{
+  "success": true,
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "type": "earn",
+        "amount": 10,
+        "balance_after": 160,
+        "source": "daily_login",
+        "description": "每日登录奖励",
+        "created_at": "2026-07-11T18:30:00"
+      }
+    ],
+    "total": 5,
+    "page": 1,
+    "page_size": 20
+  }
+}
+```
+
+**字段说明：**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | int | 记录 ID |
+| `type` | string | 变动类型：`earn` / `use` / `deduct` / `refund` / `manual` |
+| `amount` | int | 变动数量 |
+| `balance_after` | int | 变动后余额 |
+| `source` | string | 来源标识，如 `daily_login` |
+| `description` | string | 描述 |
+| `created_at` | string | 创建时间（ISO 8601） |
+
+**iOS 调用：**
+
+```swift
+let records = try await PointsService.fetchRecords(page: 1, pageSize: 20)
+```
+
+---
+
+### GET /points/features/{feature_code}
+
+检查当前用户是否有权限访问某功能。
+
+**路径参数：**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `feature_code` | string | 功能标识，如 `ai_chat` / `limit_up_ladder` |
+
+**响应示例：**
+
+```json
+{
+  "success": true,
+  "data": {
+    "allowed": true,
+    "reason": "权限校验通过",
+    "required_points": 50,
+    "required_tier": "vip",
+    "balance": 150
+  }
+}
+```
+
+**字段说明：**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `allowed` | bool | 是否允许访问 |
+| `reason` | string | 校验结果说明 |
+| `required_points` | int | 所需积分 |
+| `required_tier` | string? | 所需会员档位 |
+| `balance` | int | 当前积分余额 |
+
+**iOS 调用：**
+
+```swift
+let permission = try await PointsService.checkFeaturePermission(featureCode: "ai_chat")
+```
+
+### 402 权限不足
+
+当用户积分不足且非会员时，后端返回 `402 Payment Required`，响应体包含：
+
+```json
+{
+  "detail": {
+    "feature_code": "ai_chat",
+    "reason": "该功能需要积分或会员权限",
+    "required_points": 50,
+    "required_tier": "vip",
+    "balance": 20
+  }
+}
+```
+
+iOS 端由 `NetworkService` 统一解析并发送 `.paymentRequired` 通知，`ContentView` 自动弹出 `MembershipView`。
+
+> 说明：`/admin/*` 接口虽然路径带 `admin`，但用户端用于获取会员档位、会员状态等公开/自身数据，无需管理员角色。
+
 ## 相关文件
 
 - 后端路由入口：`trade_backend/app/api/v1/api.py`
 - 后端股票业务：`trade_backend/app/api/v1/endpoints/stocks.py`
+- 后端积分/会员业务：`trade_backend/app/api/v1/endpoints/points.py`、`trade_backend/app/api/v1/endpoints/membership.py`
 - 后端数据同步：`trade_backend/app/api/v1/endpoints/sync.py`
 - 后端 Tushare 代理：`trade_backend/app/api/v1/endpoints/tushare/`（一接口一文件，__init__.py 有完整目录）
 - 后端 ORM 模型：`trade_backend/app/models/stock.py`
@@ -802,4 +959,7 @@ iOS 端模型已使用 `CodingKeys` 做好映射，调用时直接使用 Swift �
 - iOS 网络层：`YingPlus/Services/API/`
 - iOS 股票模型：`YingPlus/Services/Stocks/StockModels.swift`
 - iOS 股票服务：`YingPlus/Services/Stocks/StockService.swift`
+- iOS 积分模型：`YingPlus/Services/Points/PointsModels.swift`
+- iOS 积分服务：`YingPlus/Services/Points/PointsService.swift`
+- iOS 积分页面：`YingPlus/Views/Points/PointsView.swift`、`YingPlus/Views/Points/PointsHistoryView.swift`
 - iOS 接口测试：`YingPlus/Views/APITestView.swift`

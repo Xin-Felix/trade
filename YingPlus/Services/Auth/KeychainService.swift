@@ -5,11 +5,39 @@ final class KeychainService {
     static let shared = KeychainService()
 
     private let service = "com.yingplus.auth"
-    private let account = "access_token"
+    private let accessTokenAccount = "access_token"
+    private let refreshTokenAccount = "refresh_token"
 
     private init() {}
 
+    // MARK: - Access Token
+
     func save(_ value: String) throws {
+        try save(value, account: accessTokenAccount)
+    }
+
+    func read() -> String? {
+        return read(account: accessTokenAccount)
+    }
+
+    func delete() {
+        delete(account: accessTokenAccount)
+        delete(account: refreshTokenAccount)
+    }
+
+    // MARK: - Refresh Token
+
+    func saveRefreshToken(_ value: String) throws {
+        try save(value, account: refreshTokenAccount)
+    }
+
+    func readRefreshToken() -> String? {
+        return read(account: refreshTokenAccount)
+    }
+
+    // MARK: - Private Helpers
+
+    private func save(_ value: String, account: String) throws {
         guard let data = value.data(using: .utf8) else {
             throw KeychainError.invalidData
         }
@@ -30,7 +58,7 @@ final class KeychainService {
         }
     }
 
-    func read() -> String? {
+    private func read(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -47,7 +75,7 @@ final class KeychainService {
         return String(data: data, encoding: .utf8)
     }
 
-    func delete() {
+    private func delete(account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

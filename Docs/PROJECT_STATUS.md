@@ -1,184 +1,178 @@
-# 盈多多 / Ying+ - 项目状态与开发指南
+# 盈多多 iOS 项目进度
 
-> 更新时间：2026-07-08
+> 更新时间：2026-07-10
 
----
+## 已完成功能
 
-## 当前已实现
+### 1. 页面框架搭建
+- TabView 五个 Tab：首页 / 市场 / AI / 自选 / 我的
+- 各模块占位页面搭建完成
 
-### iOS App (trade_ios/YingPlus)
+### 2. 首页 (HomeView)
+- **大盘指数** — 接口 `/stocks/indices`，实时显示上证/深证/创业板点位和涨跌幅
+- **北向资金** — 接口 `/stocks/moneyflow-hsgt`，今日合计、日变化、沪股通/深股通
+- **热点板块** — 接口 `/stocks/sector-moneyflow`，资金流入排行 TOP8
+- 市场概览旁"查看全部" → 大盘指数列表页 (`IndicesListView`) → 单个指数详情 (`IndexDetailView`)
+- 热点板块旁"查看全部" → 全部板块排行页 (`AllSectorsView`) → 板块详情 + 成分股列表 (`SectorDetailView`)
 
-- **底部 Tab 导航**：首页、行情、组件、接口测试、设置。
-- **全局登录态**：`ContentView` 根据 `AuthService.restoreSession()` 决定展示登录页或主界面。
-- **验证码登录**：`LoginView` 邮箱 → 获取验证码 → 输入 6 位验证码 → 自动注册/登录。
-- **测试账号登录**：开发环境一键登录，方便快速体验。
-- **Token 持久化**：`KeychainService` 安全保存 access token。
-- **退出登录**：`SettingsView` 清除 Keychain 和内存 token。
-- **首页 (HomeView)**：行情概览，展示大盘指数 + 自选股列表；左滑删除自选股。
-- **行情页 (MarketView)**：搜索股票代码/名称/拼音，搜索结果可一键加入自选股。
-- **行情详情 (StockDetailView)**：分时/日/周/月/年 K 线图，支持捏合缩放、拖拽平移、长按十字光标；分时默认展示，1分钟自动刷新；展示股票指标。
-- **指数详情 (IndexDetailView)**：大盘指数日 K 线图。
-- **板块资金流向**：行业/概念板块净流入排行 + 动态趋势折线图。
-- **自选股**：本地缓存 + 后端同步（`watchlist` 表），按加入时间排序。
-- **接口测试 (APITestView)**：底部 Tab，可测试所有后端接口，参数有默认值直接点击即可。
-- **K 线图 (KLineChartView)**：自绘 Canvas，Y 轴标签不与 K 线重叠。
+### 3. 市场 (MarketView)
+- **股票搜索** — 本地缓存 + 拼音/代码/名称模糊搜索
+- **板块中心**：
+  - 每日资金流向 — 原有的 `SectorMoneyflowTrendView`（按天趋势折线图）
+  - 分时资金流向 — 新开发的 `SectorIntradayFlowView`（气泡动画 + 播放器）
+- **龙虎榜** — 接口 `/stocks/top-list`，今日上榜个股列表
+- 板块关联分析 / 个股异动 — 占位
 
-### Widget 扩展 (trade_ios/YingPlusWidget)
+### 4. 分时资金气泡流动画 (MoneyFlowBubbleView)
+- 气泡大小 = 资金量，Y轴位置 = 流入在上/流出在下
+- X轴按 ID 固定列位（不左右跳）
+- 碰撞分离算法（贴合但不重叠）
+- 粒子流：从绿气泡（流出）→ 红气泡（流入），带拖尾方向
+- 每个红气泡保证至少有一条粒子流指向
+- 粒子目标切换时平滑转向（找最近红气泡）
+- 气泡数量可调（4~20），Stepper 控制
+- 播放器：播放/暂停、进度条拖动、0.5x/1x/2x 倍速
+- Mock 数据：20个概念板块，240帧（09:31~15:00），带趋势+惯性的平滑随机游走
+- **视频导出**：
+  - 流式渲染（不缓存全部帧，避免内存溢出）
+  - HEVC 编码 15Mbps，60fps，@3x 分辨率
+  - 帧间数据线性插值（消除气泡位置跳变）
+  - 导出时禁用浮动动画（避免每帧随机抖动）
+  - 保存到相册
 
-- **时钟组件**：每分钟刷新，显示当前时间。
-- Widget 扩展已正常嵌入主 App Target。
+### 5. 自选 (WatchlistView)
+- 后端自选股同步 — 接口 `/stocks/watchlist` (GET/POST/DELETE)
+- 本地缓存镜像快速判断星标状态
+- 每日复盘 / AI 仓位建议 — 占位
 
-### 后端 (trade_backend)
+### 6. 个人信息 (SettingsView + ProfileEditView)
+- "我的"页面：头像、昵称、邮箱（从后端加载真实数据）
+- 编辑资料页：
+  - 头像上传 — `POST /upload/avatar`，OSS 公共读直链
+  - 图片限制：5MB 上限 + 压缩到 500KB + 正方形裁切 (`ImageCropView`)
+  - 昵称修改 — `PUT /auth/me`
+- 全局刷新：`Notification.Name.userProfileUpdated`，编辑后返回自动更新
+- 积分 / 会员 / 内容管理 / 关于页 — 已搭建
 
-> 后端为独立 Git 仓库，位于 `trade_backend/`，Docker 部署。
+### 7. 股票详情 (StockDetailView)
+- K线图（日/周/月/年/分时）
+- 主力资金流
+- 日线因子（PE/PB/换手率等）
+- 板块 / 新闻 / 公告 / 财务 / 龙虎榜 — 标记待开发
 
-#### 核心路由
+### 8. 认证 (AuthService)
+- 邮箱验证码登录/注册
+- 密码登录（测试账号）
+- Token 自动注入 + 401 自动登出
+- Keychain 持久化
 
-| 前缀 | 说明 |
-|------|------|
-| `/api/v1/auth` | 认证：邮箱验证码登录、密码登录 |
-| `/api/v1/stocks` | 股票业务：行情、K线、自选股、资金流、龙虎榜、THS指数、概念归属 |
-| `/api/v1/sync` | 数据同步：后台任务触发增量同步（日K/因子/板块/指数/概念等） |
-| `/api/v1/ts` | Tushare 代理：124个接口直接透传 Tushare Pro API |
-| `/api/v1/weather` | 天气（保留） |
+### 9. UI / 品牌
+- Theme.swift：品牌色系（蓝/紫/青/红涨绿跌）
+- App 图标替换（全尺寸）
+- 外观模式切换（跟随系统/浅色/深色）
 
-#### Tushare 代理接口结构（/api/v1/ts）
+## 后端接口对接状态
 
-一个接口一个文件，共 124 个端点，按 10 大分类组织：
+| 接口 | 状态 | 用途 |
+|------|------|------|
+| `POST /auth/email/code` | ✅ | 发送验证码 |
+| `POST /auth/email/verify` | ✅ | 验证码登录 |
+| `POST /auth/login/email` | ✅ | 密码登录 |
+| `GET /auth/me` | ✅ | 获取用户信息 |
+| `PUT /auth/me` | ✅ | 修改昵称 |
+| `POST /upload/avatar` | ✅ | 头像上传 OSS |
+| `GET /stocks/quote/{code}` | ✅ | 个股行情 |
+| `GET /stocks/klines/{code}` | ✅ | K线数据 |
+| `GET /stocks/intraday/{code}` | ✅ | 分时数据 |
+| `GET /stocks/basics` | ✅ | 股票列表缓存 |
+| `GET /stocks/search` | ✅ | 股票搜索 |
+| `GET /stocks/indices` | ✅ | 大盘指数 |
+| `GET /stocks/index-daily/{code}` | ✅ | 指数日线 |
+| `GET /stocks/daily-basic/{code}` | ✅ | 日线因子 |
+| `GET /stocks/sector-moneyflow` | ✅ | 板块资金流排行 |
+| `GET /stocks/sector-moneyflow/trend` | ✅ | 板块资金流趋势 |
+| `GET /stocks/ths-member/{code}` | ✅ | 板块成分股 |
+| `GET /stocks/moneyflow-hsgt` | ✅ | 北向资金 |
+| `GET /stocks/moneyflow/{code}` | ✅ | 个股资金流 |
+| `GET /stocks/top-list` | ✅ | 龙虎榜 |
+| `GET /stocks/top-inst` | ✅ | 龙虎榜机构 |
+| `GET/POST/DELETE /stocks/watchlist` | ✅ | 自选股 |
+| `GET /points/balance` | ✅ | 积分余额 |
+| `GET /points/records` | ✅ | 积分变动明细 |
+| `GET /points/features/{feature_code}` | ✅ | 功能权限校验 |
+| `GET /stocks/concepts/{code}` | ⚠️ | 概念映射（需跑 `POST /sync/concept`） |
+| `POST /sync/concept` | 待执行 | 同步概念板块成分股到 stock_concept 表 |
+
+## 文件结构
 
 ```
-app/api/v1/endpoints/tushare/
-├── __init__.py          # 统一入口 + 完整接口目录索引
-├── _base.py             # 公共工具函数
-├── daily.py             # 历史日线
-├── pro_bar.py           # 复权行情
-├── fina_indicator.py    # 财务指标
-├── limit_list_d.py      # 涨跌停炸板
-├── dc_concept_cons.py   # DC题材成分
-├── moneyflow_ths.py     # 个股资金流向(THS)
-├── ... (共126个文件)
+YingPlus/
+├── App/
+│   └── YingPlusApp.swift
+├── Services/
+│   ├── API/
+│   │   ├── APIConfiguration.swift
+│   │   ├── APIError.swift
+│   │   └── NetworkService.swift
+│   ├── Auth/
+│   │   ├── AuthService.swift
+│   │   ├── KeychainService.swift
+│   │   └── UserService.swift          ← 用户信息 + 头像上传
+│   ├── Points/
+│   │   ├── PointsModels.swift         ← 积分余额/记录/权限模型
+│   │   └── PointsService.swift        ← 积分 API
+│   ├── MembershipService.swift        ← 会员档位/状态 API
+│   ├── H5PageService.swift            ← H5 页面 API
+│   ├── H5PageModels.swift             ← H5 页面模型
+│   ├── Stocks/
+│   │   ├── StockModels.swift
+│   │   ├── StockService.swift
+│   │   ├── MarketModels.swift         ← 北向资金/龙虎榜/指数/资金流模型
+│   │   ├── MarketService.swift        ← 市场级数据 API
+│   │   ├── ConceptFlowService.swift   ← 概念分时资金流
+│   │   └── KLineCacheService.swift
+│   └── VideoRecorder.swift            ← 视频导出（流式渲染）
+├── Views/
+│   ├── ContentView.swift
+│   ├── HomeView.swift
+│   ├── MarketView.swift
+│   ├── AICenterView.swift
+│   ├── WatchlistView.swift
+│   ├── SettingsView.swift             ← 我的 + 设置 + 关于 + 积分入口
+│   ├── ProfileEditView.swift          ← 编辑资料
+│   ├── ImageCropView.swift            ← 正方形裁切
+│   ├── Points/
+│   │   ├── PointsView.swift           ← 积分主页
+│   │   └── PointsHistoryView.swift    ← 积分记录
+│   ├── MembershipView.swift           ← 会员中心
+│   ├── H5PageView.swift               ← H5 内容展示
+│   ├── LimitUpLadderView.swift        ← 涨停梯队
+│   ├── SectorMemberListView.swift     ← 板块成分股列表
+│   ├── StockDetailView.swift
+│   ├── KLineChartView.swift
+│   ├── SharedStockViews.swift
+│   ├── Theme.swift
+│   ├── IndicesListView.swift          ← 大盘指数列表
+│   ├── AllSectorsView.swift           ← 全部板块排行
+│   ├── SectorDetailView.swift         ← 板块详情 + 成分股
+│   ├── SectorIntradayFlowView.swift   ← 分时资金流向（播放器）
+│   ├── MoneyFlowBubbleView.swift      ← 气泡流动画
+│   ├── SectorMoneyflowTrendView.swift
+│   ├── SectorMoneyflowTrendChartView.swift
+│   ├── LoginView.swift
+│   └── APITestView.swift
+└── Assets.xcassets/
+    ├── AppIcon.appiconset/
+    └── AppLogo.imageset/
 ```
 
-分类：
-1. **股票基础/行情** (12个)：stock_basic, trade_cal, daily, pro_bar, weekly, monthly, adj_factor, suspend_d, daily_basic, stk_limit, namechange, stk_premarket
-2. **财务数据** (10个)：fina_indicator, income, balancesheet, cashflow, forecast, express, dividend, fina_mainbz, fina_audit, disclosure_date
-3. **参考数据** (15个)：top10_holders, top10_floatholders, stk_holdernumber, stk_holdertrade, pledge_stat, pledge_detail, repurchase, share_float, block_trade, new_share, stock_company, stk_managers, stk_rewards, stock_hsgt, stock_st
-4. **打板/题材/龙虎榜** (27个)：top_list, top_inst, limit_list_d, limit_step, limit_cpt_list, limit_list_ths, kpl_list, kpl_concept_cons, ths_index, ths_daily, ths_member, ths_hot, dc_index, dc_member, dc_daily, dc_hot, dc_concept, dc_concept_cons, tdx_index, tdx_member, tdx_daily, hm_list, hm_detail, stk_auction, stk_auction_o, stk_auction_c, broker_recommend
-5. **资金流向** (8个)：moneyflow, moneyflow_hsgt, moneyflow_cnt_ths, moneyflow_ind_ths, moneyflow_ind_dc, moneyflow_mkt_dc, moneyflow_ths, moneyflow_dc
-6. **两融数据** (4个)：margin, margin_detail, margin_secs, slb_len
-7. **特色数据** (11个)：cyq_perf, cyq_chips, stk_factor, stk_factor_pro, stk_nineturn, hk_hold, stk_surv, report_rc, stk_alert, stk_shock, ccass_hold
-8. **ETF/基金** (11个)：fund_basic, fund_daily, fund_nav, fund_share, fund_portfolio, fund_div, fund_manager, fund_adj, etf_basic, etf_index, etf_share_size
-9. **指数** (14个)：index_basic, index_daily, index_weekly, index_monthly, index_weight, index_dailybasic, index_classify, index_member_all, index_global, sw_daily, ci_daily, ci_index_member, daily_info, sz_daily_info
-10. **宏观/新闻** (14个)：news, major_news, cctv_news, shibor, shibor_lpr, cn_cpi, cn_ppi, cn_gdp, cn_m, cn_pmi, sf_month, eco_cal, research_report, anns_d
+## 待开发
 
-#### 数据库表
-
-| 表名 | 说明 |
-|------|------|
-| users | 用户 |
-| email_codes | 邮箱验证码 |
-| watchlist | 自选股（按加入时间排序） |
-| stock_basic | 股票基础信息 |
-| stock_daily | 日K线 |
-| stock_weekly | 周K线 |
-| stock_monthly | 月K线 |
-| stock_yearly | 年K线 |
-| stock_daily_basic | 每日指标（PE/PB等） |
-| stock_fina_indicator | 财务指标（季度） |
-| sector_moneyflow_industry | 行业板块资金流 |
-| sector_moneyflow_concept | 概念板块资金流 |
-| stock_moneyflow | 个股资金流 |
-| moneyflow_hsgt | 沪深港通资金流 |
-| index_basic | 指数基础信息 |
-| index_daily | 指数日线 |
-| stock_limit | 涨跌停 |
-| top_list | 龙虎榜明细 |
-| top_inst | 龙虎榜机构 |
-| ths_index | 同花顺指数 |
-| ths_daily | 同花顺指数日线 |
-| ths_member | 同花顺指数成分 |
-| stock_concept | 股票概念/题材映射（concept_id + ts_code） |
-
-#### 数据同步端点（/api/v1/sync）
-
-| 端点 | 说明 |
-|------|------|
-| POST /sync/recent | 全量增量同步（日K+因子+板块+指数+涨跌停） |
-| POST /sync/daily-kline | 仅日K线 |
-| POST /sync/daily-basic | 仅日线因子 |
-| POST /sync/sector-moneyflow | 板块资金流 |
-| POST /sync/stock-moneyflow | 个股资金流 |
-| POST /sync/index-daily | 指数日线 |
-| POST /sync/hsgt | 沪深港通 |
-| POST /sync/stock-limit | 涨跌停 |
-| POST /sync/concept | 概念板块成分映射（全量，耗时几分钟） |
-
-所有同步接口使用 FastAPI BackgroundTasks，调用后立即返回。
-
----
-
-## 关键决策
-
-1. **SwiftUI + WidgetKit**：原生 iOS 方案。
-2. **Python + FastAPI 后端**：适合金融数据处理。
-3. **Tushare Pro（付费10000积分）**：主要数据源，akshare 仅用于实时分时。
-4. **一接口一文件**：Tushare 代理接口每个独立文件，方便维护查找。
-5. **后端不做定时任务**：通过 API 手动/后台管理面板触发同步，后续会接 Vue 管理后台。
-6. **Docker 部署**：PostgreSQL + Redis + backend 一键启动。
-
----
-
-## 已知问题 / 注意事项
-
-- **后端 `.env` 包含敏感信息**：已加入 `.gitignore`。
-- **Tushare Token**：需配置 `TUSHARE_TOKEN` 环境变量。
-- **Tushare 限流**：10000积分约 200次/分钟，概念同步有 sleep(0.35)。
-- **旧 concept API 已弃用**：使用 `ths_index(type=N)` + `ths_member` 替代。
-- **后端地址**：开发环境 `http://192.168.31.86:8000`，模拟器 `http://127.0.0.1:8000`。
-
----
-
-## 下一步
-
-### 近期
-
-1. **Vue 后台管理面板**：管理数据同步任务、查看同步状态、手动触发。
-2. **持仓盈亏**：用户录入持仓，展示实时盈亏。
-3. **买入卖出策略逻辑**：基于题材、资金流、技术面等数据组合判断。
-
-### 中期
-
-4. 行情提醒小组件。
-5. 推送通知（股价/涨跌幅提醒）。
-
-### 远期
-
-6. Apple 登录 + App Store 上架。
-
----
-
-## 如何继续开发
-
-### 启动后端
-
-```bash
-cd /Users/huangxin/Desktop/trade/trade_backend
-docker compose up -d --build backend
-# 访问 http://192.168.31.86:8000/docs 查看 Swagger 文档
-```
-
-### 启动 iOS App
-
-```bash
-cd /Users/huangxin/Desktop/trade/trade_ios
-open YingPlus.xcodeproj
-# 选择模拟器，Cmd+R
-```
-
-### 同步数据
-
-```bash
-# 通过 iOS 接口测试 Tab 或直接 curl
-curl -X POST http://192.168.31.86:8000/api/v1/sync/recent?days=3 -H "Authorization: Bearer YOUR_TOKEN"
-curl -X POST http://192.168.31.86:8000/api/v1/sync/concept -H "Authorization: Bearer YOUR_TOKEN"
-```
+- [ ] 分时资金流向接口对接（替换 mock 数据）
+- [ ] AI 中心功能（AI 晨报 / 个股分析 / 公告解读）
+- [ ] 国际市场行情数据
+- [ ] 个股异动
+- [ ] 板块关联分析
+- [ ] 持仓管理
+- [ ] Widget 小组件
+- [ ] Apple Watch

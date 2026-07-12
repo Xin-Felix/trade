@@ -2,8 +2,11 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var isLoggedIn: Bool = AuthService.restoreSession() != nil
-    @State private var selectedTab = 0  // 默认选中首页 Tab
+    @SceneStorage("selectedTab") private var selectedTab = 0
     @State private var autoLoginError: String?
+    @AppStorage("appearanceMode") private var appearanceMode: Int = 0
+    @State private var paymentInfo: PaymentRequiredInfo?
+    @State private var showMembershipSheet = false
 
     var body: some View {
         ZStack {
@@ -16,9 +19,39 @@ struct ContentView: View {
         .task {
             await autoLoginIfNeeded()
         }
+        .onAppear {
+            updateWindowAppearance()
+        }
+        .onChange(of: appearanceMode) { _, _ in
+            updateWindowAppearance()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .sessionUnauthorized)) { _ in
             AuthService.logout()
             isLoggedIn = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .paymentRequired)) { notification in
+            if let info = notification.object as? PaymentRequiredInfo {
+                paymentInfo = info
+                showMembershipSheet = true
+            }
+        }
+        .sheet(isPresented: $showMembershipSheet) {
+            MembershipView(paymentInfo: paymentInfo)
+        }
+    }
+
+    private func updateWindowAppearance() {
+        DispatchQueue.main.async {
+            let style: UIUserInterfaceStyle
+            switch appearanceMode {
+            case 1: style = .light
+            case 2: style = .dark
+            default: style = .unspecified
+            }
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .forEach { $0.overrideUserInterfaceStyle = style }
         }
     }
 

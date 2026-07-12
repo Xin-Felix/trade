@@ -2,16 +2,20 @@ import Foundation
 
 enum StockService {
     /// 获取单只股票最新行情
-    static func fetchQuote(code: String) async throws -> StockData {
+    static func fetchQuote(code: String, policy: CachePolicy = .default) async throws -> StockData {
         let url = APIConfiguration.shared.apiV1URL + "/stocks/quote/\(code)"
-        return try await NetworkService.shared.request(url)
+        let key = "quote_\(code)"
+        // 行情实时性要求高：盘中 60s，盘后长期有效
+        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
+            try await NetworkService.shared.request(url)
+        }
     }
 
     /// 获取 K 线数据
     static func fetchKlines(code: String, period: KlinePeriod = .day, limit: Int = 60) async throws -> [KlineData] {
         var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/klines/\(code)")!
         components.queryItems = [
-            URLQueryItem(name: "period", value: period.rawValue),
+            URLQueryItem(name: "period", value: period.apiPeriod),
             URLQueryItem(name: "limit", value: String(limit))
         ]
 
@@ -29,9 +33,56 @@ enum StockService {
     }
 
     /// 获取主要大盘指数最新数据
-    static func fetchIndices() async throws -> [IndexItem] {
+    static func fetchIndices(policy: CachePolicy = .default) async throws -> [IndexItem] {
         let url = APIConfiguration.shared.apiV1URL + "/stocks/indices"
-        return try await NetworkService.shared.request(url)
+        let key = "indices_\(MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate()))"
+        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
+            try await NetworkService.shared.request(url)
+        }
+    }
+
+    /// 国内主要大盘指数（含后端返回的上证/深证/创业板，及补充的科创/北证/上证50/中证500）
+    static func fetchDomesticIndices(policy: CachePolicy = .default) async throws -> [IndexItem] {
+        let baseIndices = try await fetchIndices(policy: policy)
+        let extras = await fetchExtraDomesticIndices()
+        let baseCodes = Set(baseIndices.compactMap(\.tsCode))
+        return baseIndices + extras.filter { !baseCodes.contains($0.tsCode ?? "") }
+    }
+
+    private static func fetchExtraDomesticIndices() async -> [IndexItem] {
+        let extras: [(code: String, name: String)] = [
+            ("000688.SH", "科创50"),
+            ("000698.SH", "科创100"),
+            ("899050.BJ", "北证50"),
+            ("000016.SH", "上证50"),
+            ("000905.SH", "中证500"),
+        ]
+
+        var result: [IndexItem] = []
+        for item in extras {
+            if let index = try? await fetchIndexDailyLatest(code: item.code, name: item.name) {
+                result.append(index)
+            }
+        }
+        return result
+    }
+
+    private static func fetchIndexDailyLatest(code: String, name: String) async throws -> IndexItem {
+        let data = try await MarketService.fetchIndexDaily(code: code, limit: 1)
+        guard let latest = data.first else {
+            throw APIError.noData
+        }
+        return IndexItem(name: name, value: latest.close, change: latest.pctChg, tsCode: code)
+    }
+
+    /// 获取全球主要大盘指数最新数据
+    static func fetchGlobalIndices(policy: CachePolicy = .default) async throws -> [IndexItem] {
+        let url = APIConfiguration.shared.apiV1URL + "/global-market/indices"
+        let key = "global_market_indices_\(MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate()))"
+        let response: GlobalMarketIndicesResponse = try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
+            try await NetworkService.shared.request(url)
+        }
+        return response.data.map(IndexItem.from)
     }
 
     /// 搜索股票（支持代码、名称、拼音缩写）
@@ -88,23 +139,51 @@ enum StockService {
         try await NetworkService.shared.requestVoid(url, method: .delete)
     }
 
+    /// 获取持仓列表
+    static func fetchPortfolio() async throws -> [PortfolioItem] {
+        let url = APIConfiguration.shared.apiV1URL + "/stocks/portfolio"
+        let response: PortfolioResponse = try await NetworkService.shared.request(url)
+        return response.items
+    }
+
+    /// 添加持仓
+    static func addToPortfolio(code: String, name: String, note: String? = nil) async throws -> PortfolioItem {
+        let url = APIConfiguration.shared.apiV1URL + "/stocks/portfolio"
+        let body = PortfolioAddBody(code: code, name: name, note: note)
+        return try await NetworkService.shared.request(url, method: .post, body: body)
+    }
+
+    /// 删除持仓
+    static func removeFromPortfolio(code: String) async throws {
+        let url = APIConfiguration.shared.apiV1URL + "/stocks/portfolio/\(code)"
+        try await NetworkService.shared.requestVoid(url, method: .delete)
+    }
+
     /// 获取分时 K 线数据（1/5/15/30/60 分钟）
-    static func fetchIntradayKlines(code: String, period: String = "1", limit: Int = 240) async throws -> [IntradayKlineData] {
+    static func fetchIntradayKlines(code: String, period: String = "1", limit: Int = 241, tradeDate: String? = nil, policy: CachePolicy = .default) async throws -> [IntradayKlineData] {
         var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/intraday/\(code)")!
-        components.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "period", value: period),
             URLQueryItem(name: "limit", value: String(limit))
         ]
+        if let date = tradeDate {
+            queryItems.append(URLQueryItem(name: "trade_date", value: date))
+        }
+        components.queryItems = queryItems
 
         guard let url = components.url?.absoluteString else {
             throw APIError.invalidURL
         }
 
-        return try await NetworkService.shared.request(url)
+        let date = tradeDate ?? MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate())
+        let key = "intraday_\(code)_\(period)_\(limit)_\(date)"
+        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
+            try await NetworkService.shared.request(url)
+        }
     }
 
     /// 获取股票日线因子数据（PE/PB/换手率等）
-    static func fetchDailyBasic(code: String, limit: Int = 1) async throws -> [DailyBasicData] {
+    static func fetchDailyBasic(code: String, limit: Int = 1, policy: CachePolicy = .default) async throws -> [DailyBasicData] {
         var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/daily-basic/\(code)")!
         components.queryItems = [
             URLQueryItem(name: "limit", value: String(limit))
@@ -114,7 +193,39 @@ enum StockService {
             throw APIError.invalidURL
         }
 
-        return try await NetworkService.shared.request(url)
+        let key = "daily_basic_\(code)_\(limit)_\(MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate()))"
+        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
+            try await NetworkService.shared.request(url)
+        }
+    }
+
+    /// 获取某只股票所属的全部概念/题材板块
+    static func fetchConcepts(code: String, policy: CachePolicy = .default) async throws -> [StockConcept] {
+        let url = APIConfiguration.shared.apiV1URL + "/stocks/concepts/\(code)"
+        let key = "concepts_\(code)_\(MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate()))"
+        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
+            try await NetworkService.shared.request(url)
+        }
+    }
+
+    /// 获取上市公司基本信息（公司简介、主营业务等）
+    static func fetchStockCompany(code: String) async throws -> StockCompanyInfo? {
+        let url = APIConfiguration.shared.apiV1URL + "/ts/stock-company/\(code)"
+        let list: [StockCompanyInfo] = try await NetworkService.shared.request(url)
+        return list.first
+    }
+
+    /// 获取上市公司财务指标数据（ROE/EPS/毛利率等）
+    static func fetchFinaIndicator(code: String, limit: Int = 1) async throws -> FinaIndicator? {
+        var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/ts/fina-indicator/\(code)")!
+        components.queryItems = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        guard let url = components.url?.absoluteString else {
+            throw APIError.invalidURL
+        }
+        let list: [FinaIndicator] = try await NetworkService.shared.request(url)
+        return list.first
     }
 
     /// 获取板块资金流排行（行业/概念）
@@ -122,7 +233,8 @@ enum StockService {
         sectorType: SectorMoneyflowType = .industry,
         tradeDate: String? = nil,
         sortBy: String = "net_amount",
-        limit: Int = 20
+        limit: Int = 20,
+        policy: CachePolicy = .default
     ) async throws -> SectorMoneyflowRankResponse {
         var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/sector-moneyflow")!
         var queryItems = [
@@ -130,16 +242,18 @@ enum StockService {
             URLQueryItem(name: "sort_by", value: sortBy),
             URLQueryItem(name: "limit", value: String(limit))
         ]
-        if let tradeDate = tradeDate {
-            queryItems.append(URLQueryItem(name: "trade_date", value: tradeDate))
-        }
+        let date = tradeDate ?? MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate())
+        queryItems.append(URLQueryItem(name: "trade_date", value: date))
         components.queryItems = queryItems
 
         guard let url = components.url?.absoluteString else {
             throw APIError.invalidURL
         }
 
-        return try await NetworkService.shared.request(url)
+        let key = "sector_moneyflow_\(sectorType.rawValue)_\(sortBy)_\(limit)_\(date)"
+        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
+            try await NetworkService.shared.request(url)
+        }
     }
 
     /// 获取板块资金流动态趋势（时间段）
@@ -147,7 +261,8 @@ enum StockService {
         sectorType: SectorMoneyflowType = .industry,
         startDate: String,
         endDate: String,
-        topN: Int = 30
+        topN: Int = 30,
+        policy: CachePolicy = .default
     ) async throws -> SectorMoneyflowTrendResponse {
         var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/sector-moneyflow/trend")!
         components.queryItems = [
@@ -161,7 +276,10 @@ enum StockService {
             throw APIError.invalidURL
         }
 
-        return try await NetworkService.shared.request(url)
+        let key = "sector_moneyflow_trend_\(sectorType.rawValue)_\(startDate)_\(endDate)_\(topN)"
+        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
+            try await NetworkService.shared.request(url)
+        }
     }
 }
 

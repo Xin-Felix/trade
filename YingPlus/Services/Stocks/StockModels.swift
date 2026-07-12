@@ -1,7 +1,7 @@
 import Foundation
 
 /// 股票行情数据
-struct StockData: Identifiable, Decodable, Hashable {
+struct StockData: Identifiable, Codable, Hashable, Sendable {
     let id = UUID()
     let code: String
     let name: String
@@ -17,6 +17,26 @@ struct StockData: Identifiable, Decodable, Hashable {
         self.changePercent = changePercent
         self.preClose = preClose
         self.updatedAt = updatedAt
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.code = try container.decode(String.self, forKey: .code)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.price = try container.decode(Double.self, forKey: .price)
+        self.changePercent = try container.decode(Double.self, forKey: .changePercent)
+        self.preClose = try container.decodeIfPresent(Double.self, forKey: .preClose)
+        self.updatedAt = try container.decode(String.self, forKey: .updatedAt)
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(code, forKey: .code)
+        try container.encode(name, forKey: .name)
+        try container.encode(price, forKey: .price)
+        try container.encode(changePercent, forKey: .changePercent)
+        try container.encode(preClose, forKey: .preClose)
+        try container.encode(updatedAt, forKey: .updatedAt)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -38,7 +58,7 @@ struct StockData: Identifiable, Decodable, Hashable {
 }
 
 /// 股票基础信息（用于本地缓存和搜索）
-struct StockBasicInfo: Identifiable, Codable, Hashable {
+struct StockBasicInfo: Identifiable, Codable, Hashable, Sendable {
     let id = UUID()
     let code: String
     let name: String
@@ -54,7 +74,7 @@ struct StockBasicInfo: Identifiable, Codable, Hashable {
 }
 
 /// 股票搜索结果
-struct StockSearchResult: Identifiable, Decodable, Hashable {
+struct StockSearchResult: Identifiable, Codable, Hashable, Sendable {
     let id = UUID()
     let code: String
     let name: String
@@ -69,7 +89,7 @@ struct StockSearchResult: Identifiable, Decodable, Hashable {
 }
 
 /// K 线数据
-struct KlineData: Identifiable, Codable, Hashable {
+struct KlineData: Identifiable, Codable, Hashable, Sendable {
     let id = UUID()
     let tsCode: String
     let tradeDate: String
@@ -105,7 +125,8 @@ struct KlineData: Identifiable, Codable, Hashable {
 }
 
 enum KlinePeriod: String, CaseIterable {
-    case intraday = "1"
+    case trend = "T"      // 分时走势折线图（UI 专用）
+    case intraday = "1"   // 分时 K 线（分钟蜡烛图）
     case day = "D"
     case week = "W"
     case month = "M"
@@ -113,6 +134,7 @@ enum KlinePeriod: String, CaseIterable {
 
     var title: String {
         switch self {
+        case .trend: return "走势"
         case .intraday: return "分时"
         case .day: return "日K"
         case .week: return "周K"
@@ -124,10 +146,21 @@ enum KlinePeriod: String, CaseIterable {
     var isIntraday: Bool {
         self == .intraday
     }
+
+    var usesIntradayData: Bool {
+        self == .trend || self == .intraday
+    }
+
+    var apiPeriod: String {
+        switch self {
+        case .trend, .intraday: return "1"
+        case .day, .week, .month, .year: return rawValue
+        }
+    }
 }
 
 /// 分时 K 线数据（分钟级）
-struct IntradayKlineData: Identifiable, Decodable, Hashable {
+struct IntradayKlineData: Identifiable, Codable, Hashable, Sendable {
     let id = UUID()
     let tsCode: String
     let datetime: String
@@ -178,7 +211,7 @@ struct IntradayKlineData: Identifiable, Decodable, Hashable {
 }
 
 /// 股票日线因子数据
-struct DailyBasicData: Identifiable, Decodable, Hashable {
+struct DailyBasicData: Identifiable, Codable, Hashable, Sendable {
     let id = UUID()
     let tsCode: String
     let tradeDate: String
@@ -239,7 +272,7 @@ enum SectorMoneyflowType: String {
 // MARK: - 自选股后端响应
 
 /// 后端自选股列表项
-struct WatchlistItemData: Identifiable, Decodable {
+struct WatchlistItemData: Identifiable, Codable, Sendable {
     let id = UUID()
     let code: String
     let name: String
@@ -255,13 +288,13 @@ struct WatchlistItemData: Identifiable, Decodable {
 }
 
 /// 后端自选股列表响应
-struct WatchlistResponse: Decodable {
+struct WatchlistResponse: Codable, Sendable {
     let items: [WatchlistItemData]
     let total: Int
 }
 
 /// 板块资金流数据
-struct SectorMoneyflowData: Identifiable, Decodable, Hashable {
+struct SectorMoneyflowData: Identifiable, Codable, Hashable, Sendable {
     let id = UUID()
     let tsCode: String
     let tradeDate: String
@@ -300,7 +333,7 @@ struct SectorMoneyflowData: Identifiable, Decodable, Hashable {
 }
 
 /// 板块资金流排行响应
-struct SectorMoneyflowRankResponse: Decodable {
+struct SectorMoneyflowRankResponse: Codable, Sendable {
     let sectors: [SectorMoneyflowData]
     let tradeDate: String
     let sectorType: String
@@ -310,10 +343,24 @@ struct SectorMoneyflowRankResponse: Decodable {
         case tradeDate = "trade_date"
         case sectorType = "sector_type"
     }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.sectors = try container.decode([SectorMoneyflowData].self, forKey: .sectors)
+        self.tradeDate = try container.decode(String.self, forKey: .tradeDate)
+        self.sectorType = try container.decode(String.self, forKey: .sectorType)
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sectors, forKey: .sectors)
+        try container.encode(tradeDate, forKey: .tradeDate)
+        try container.encode(sectorType, forKey: .sectorType)
+    }
 }
 
 /// 板块资金流动态趋势响应
-struct SectorMoneyflowTrendResponse: Decodable {
+struct SectorMoneyflowTrendResponse: Codable, Sendable {
     let sectorType: String
     let startDate: String
     let endDate: String
@@ -327,10 +374,57 @@ struct SectorMoneyflowTrendResponse: Decodable {
         case dates
         case series
     }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.sectorType = try container.decode(String.self, forKey: .sectorType)
+        self.startDate = try container.decode(String.self, forKey: .startDate)
+        self.endDate = try container.decode(String.self, forKey: .endDate)
+        self.dates = try container.decode([String].self, forKey: .dates)
+        self.series = try container.decode([SectorMoneyflowSeries].self, forKey: .series)
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sectorType, forKey: .sectorType)
+        try container.encode(startDate, forKey: .startDate)
+        try container.encode(endDate, forKey: .endDate)
+        try container.encode(dates, forKey: .dates)
+        try container.encode(series, forKey: .series)
+    }
+}
+
+/// 股票概念/题材归属
+struct StockConcept: Identifiable, Codable, Hashable, Sendable {
+    let id = UUID()
+    let conceptId: String
+    let conceptName: String
+    let tsCode: String
+    let name: String?
+    let inDate: String?
+    let outDate: String?
+
+    enum CodingKeys: String, CodingKey {
+        case conceptId = "concept_id"
+        case conceptName = "concept_name"
+        case tsCode = "ts_code"
+        case name
+        case inDate = "in_date"
+        case outDate = "out_date"
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(conceptId)
+        hasher.combine(tsCode)
+    }
+
+    static func == (lhs: StockConcept, rhs: StockConcept) -> Bool {
+        lhs.conceptId == rhs.conceptId && lhs.tsCode == rhs.tsCode
+    }
 }
 
 /// 板块资金流趋势单条序列
-struct SectorMoneyflowSeries: Identifiable, Decodable {
+struct SectorMoneyflowSeries: Identifiable, Codable, Sendable {
     let id = UUID()
     let tsCode: String
     let name: String
@@ -344,7 +438,7 @@ struct SectorMoneyflowSeries: Identifiable, Decodable {
 }
 
 /// 板块资金流趋势单天数据点
-struct SectorMoneyflowTrendPoint: Decodable {
+struct SectorMoneyflowTrendPoint: Codable, Sendable {
     let tradeDate: String
     let netAmount: Double
     let pctChange: Double?
@@ -353,5 +447,212 @@ struct SectorMoneyflowTrendPoint: Decodable {
         case tradeDate = "trade_date"
         case netAmount = "net_amount"
         case pctChange = "pct_change"
+    }
+}
+
+// MARK: - 涨停梯队
+
+/// 涨停梯队响应
+struct LimitUpLadderResponse: Codable, Sendable {
+    let tradeDate: String
+    let conceptTags: [LimitUpConceptTag]
+    let ladder: [LimitUpLadderGroup]
+
+    enum CodingKeys: String, CodingKey {
+        case tradeDate = "trade_date"
+        case conceptTags = "concept_tags"
+        case ladder
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.tradeDate = try container.decode(String.self, forKey: .tradeDate)
+        self.conceptTags = try container.decode([LimitUpConceptTag].self, forKey: .conceptTags)
+        self.ladder = try container.decode([LimitUpLadderGroup].self, forKey: .ladder)
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(tradeDate, forKey: .tradeDate)
+        try container.encode(conceptTags, forKey: .conceptTags)
+        try container.encode(ladder, forKey: .ladder)
+    }
+}
+
+/// 涨停概念标签
+struct LimitUpConceptTag: Identifiable, Codable, Hashable, Sendable {
+    let id: String
+    let name: String
+    let count: Int
+    let consCount: Int
+    let pctChange: Double
+    let rank: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id = "concept_id"
+        case name
+        case count
+        case consCount = "cons_count"
+        case pctChange = "pct_change"
+        case rank
+    }
+
+    init(id: String, name: String, count: Int, consCount: Int, pctChange: Double, rank: Int) {
+        self.id = id
+        self.name = name
+        self.count = count
+        self.consCount = consCount
+        self.pctChange = pctChange
+        self.rank = rank
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        self.name = try container.decode(String.self, forKey: .name)
+        self.count = try container.decode(Int.self, forKey: .count)
+        self.consCount = try container.decode(Int.self, forKey: .consCount)
+        self.pctChange = try container.decode(Double.self, forKey: .pctChange)
+        self.rank = try container.decode(Int.self, forKey: .rank)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(count, forKey: .count)
+        try container.encode(consCount, forKey: .consCount)
+        try container.encode(pctChange, forKey: .pctChange)
+        try container.encode(rank, forKey: .rank)
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: LimitUpConceptTag, rhs: LimitUpConceptTag) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+/// 涨停梯队分组
+struct LimitUpLadderGroup: Identifiable, Codable, Sendable {
+    let id = UUID()
+    let step: Int
+    let label: String
+    let stocks: [LimitUpLadderStock]
+}
+
+/// 涨停梯队个股
+struct LimitUpLadderStock: Identifiable, Codable, Hashable, Sendable {
+    let id = UUID()
+    let tsCode: String
+    let name: String
+    let close: Double
+    let pctChg: Double
+    let firstTime: String?
+    let lastTime: String?
+    let openTimes: Int?
+    let conceptTags: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case tsCode = "ts_code"
+        case name
+        case close
+        case pctChg = "pct_chg"
+        case firstTime = "first_time"
+        case lastTime = "last_time"
+        case openTimes = "open_times"
+        case conceptTags = "concept_tags"
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(tsCode)
+    }
+
+    static func == (lhs: LimitUpLadderStock, rhs: LimitUpLadderStock) -> Bool {
+        lhs.tsCode == rhs.tsCode
+    }
+}
+
+// MARK: - 公司基本信息（Tushare stock_company）
+
+struct StockCompanyInfo: Identifiable, Codable, Sendable {
+    let id = UUID()
+    let tsCode: String
+    let exchange: String?
+    let chairman: String?
+    let manager: String?
+    let secretary: String?
+    let regCapital: Double?
+    let setupDate: String?
+    let province: String?
+    let city: String?
+    let introduction: String?
+    let website: String?
+    let email: String?
+    let office: String?
+    let employees: Int?
+    let mainBusiness: String?
+    let businessScope: String?
+
+    enum CodingKeys: String, CodingKey {
+        case tsCode = "ts_code"
+        case exchange
+        case chairman
+        case manager
+        case secretary
+        case regCapital = "reg_capital"
+        case setupDate = "setup_date"
+        case province
+        case city
+        case introduction
+        case website
+        case email
+        case office
+        case employees
+        case mainBusiness = "main_business"
+        case businessScope = "business_scope"
+    }
+}
+
+// MARK: - 财务指标（Tushare fina_indicator）
+
+struct FinaIndicator: Identifiable, Codable, Sendable {
+    let id = UUID()
+    let tsCode: String
+    let annDate: String?
+    let endDate: String?
+    let eps: Double?
+    let dtEps: Double?
+    let bps: Double?
+    let roe: Double?
+    let roeYearly: Double?
+    let roaYearly: Double?
+    let netprofitMargin: Double?
+    let grossprofitMargin: Double?
+    let assetsTurn: Double?
+    let debtToAssets: Double?
+    let netprofitYoy: Double?
+    let opYoy: Double?
+    let bpsYoy: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case tsCode = "ts_code"
+        case annDate = "ann_date"
+        case endDate = "end_date"
+        case eps
+        case dtEps = "dt_eps"
+        case bps
+        case roe
+        case roeYearly = "roe_yearly"
+        case roaYearly = "roa_yearly"
+        case netprofitMargin = "netprofit_margin"
+        case grossprofitMargin = "grossprofit_margin"
+        case assetsTurn = "assets_turn"
+        case debtToAssets = "debt_to_assets"
+        case netprofitYoy = "netprofit_yoy"
+        case opYoy = "op_yoy"
+        case bpsYoy = "bps_yoy"
     }
 }

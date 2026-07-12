@@ -263,17 +263,19 @@ struct SectorMoneyflowTrendView: View {
         .transition(.opacity)
     }
 
-    private func loadTrend() async {
+    private func loadTrend(forceRefresh: Bool = false) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
         do {
+            let policy: CachePolicy = forceRefresh ? .skipCache : .default
             let response = try await StockService.fetchSectorMoneyflowTrend(
                 sectorType: selectedType,
                 startDate: dateFormatter.string(from: startDate),
                 endDate: dateFormatter.string(from: endDate),
-                topN: topN
+                topN: topN,
+                policy: policy
             )
             rawSeries = response.series
             dates = response.dates

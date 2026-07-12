@@ -40,6 +40,21 @@ enum AuthService {
         return response.accessToken
     }
 
+    /// 用 refresh token 换取新的 access token
+    static func refreshAccessToken() async throws -> String {
+        guard let refreshToken = KeychainService.shared.readRefreshToken() else {
+            throw APIError.unauthorized
+        }
+        let request = RefreshTokenRequest(refreshToken: refreshToken)
+        let response: TokenResponse = try await NetworkService.shared.request(
+            APIConfiguration.shared.apiV1URL + "/auth/refresh-token",
+            method: .post,
+            body: request
+        )
+        try setSession(response)
+        return response.accessToken
+    }
+
     /// 从 Keychain 恢复登录态
     @discardableResult
     static func restoreSession() -> String? {
@@ -60,6 +75,7 @@ enum AuthService {
         NetworkService.shared.setAuthToken(response.accessToken)
         // Keychain 在模拟器上可能保存失败，开发环境忽略该错误
         try? KeychainService.shared.save(response.accessToken)
+        try? KeychainService.shared.saveRefreshToken(response.refreshToken)
     }
 }
 
@@ -79,13 +95,23 @@ struct EmailCodeVerifyRequest: Encodable {
     let purpose: String = "login"
 }
 
+struct RefreshTokenRequest: Encodable {
+    let refreshToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case refreshToken = "refresh_token"
+    }
+}
+
 struct TokenResponse: Decodable {
     let accessToken: String
+    let refreshToken: String
     let tokenType: String
     let user: User?
 
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
+        case refreshToken = "refresh_token"
         case tokenType = "token_type"
         case user
     }

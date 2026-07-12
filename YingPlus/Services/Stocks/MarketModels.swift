@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - 北向资金（沪深港通）
 
-struct HsgtFlowData: Identifiable, Decodable {
+struct HsgtFlowData: Identifiable, Codable, Sendable {
     let id = UUID()
     let tradeDate: String
     let ggtSs: Double?      // 港股通（沪）
@@ -35,9 +35,18 @@ struct HsgtFlowData: Identifiable, Decodable {
     }
 }
 
+// MARK: - 龙虎榜响应（包装对象）
+
+struct TopListResponse: Codable, Sendable {
+    let items: [TopListItem]
+    let total: Int
+    let limit: Int
+    let offset: Int
+}
+
 // MARK: - 龙虎榜明细
 
-struct TopListItem: Identifiable, Decodable, Hashable {
+struct TopListItem: Identifiable, Codable, Hashable, Sendable {
     let id = UUID()
     let tradeDate: String
     let tsCode: String
@@ -86,7 +95,7 @@ struct TopListItem: Identifiable, Decodable, Hashable {
 
 // MARK: - 龙虎榜机构明细
 
-struct TopInstItem: Identifiable, Decodable {
+struct TopInstItem: Identifiable, Codable, Sendable {
     let id = UUID()
     let tradeDate: String
     let tsCode: String
@@ -115,7 +124,7 @@ struct TopInstItem: Identifiable, Decodable {
 
 // MARK: - 指数日线
 
-struct IndexDailyData: Identifiable, Decodable {
+struct IndexDailyData: Identifiable, Codable, Sendable {
     let id = UUID()
     let tsCode: String
     let tradeDate: String
@@ -152,7 +161,7 @@ struct IndexDailyData: Identifiable, Decodable {
 
 // MARK: - 个股资金流
 
-struct MoneyFlowData: Identifiable, Decodable {
+struct MoneyFlowData: Identifiable, Codable, Sendable {
     let id = UUID()
     let tsCode: String
     let tradeDate: String
@@ -201,15 +210,54 @@ struct MoneyFlowData: Identifiable, Decodable {
 
 // MARK: - 板块成分股
 
-struct SectorMemberItem: Identifiable, Decodable {
+struct SectorMemberItem: Identifiable, Codable, Sendable {
     let id = UUID()
     let tsCode: String
     let conCode: String
     let conName: String?
+    let pctChange: Double?
+    let board: String?
 
     enum CodingKeys: String, CodingKey {
         case tsCode = "ts_code"
         case conCode = "con_code"
         case conName = "con_name"
+        case pctChange = "pct_change"
+        case board
     }
 }
+
+// MARK: - 概念成分股（Tushare）
+
+struct ConceptDetailResponse: Codable, Sendable {
+    let success: Bool
+    let data: ConceptDetailData
+}
+
+struct ConceptDetailData: Codable, Sendable {
+    let conceptId: String
+    let conceptName: String
+    let items: [ConceptMemberItem]
+
+    enum CodingKeys: String, CodingKey {
+        case conceptId = "concept_id"
+        case conceptName = "concept_name"
+        case items
+    }
+}
+
+struct ConceptMemberItem: Identifiable, Codable, Sendable {
+    let id = UUID()
+    let tsCode: String
+    let name: String
+    let inDate: String?
+    let outDate: String?
+
+    enum CodingKeys: String, CodingKey {
+        case tsCode = "ts_code"
+        case name
+        case inDate = "in_date"
+        case outDate = "out_date"
+    }
+}
+

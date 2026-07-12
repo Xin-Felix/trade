@@ -1,27 +1,30 @@
 import SwiftUI
 
-/// 大盘指数列表页 — 展示所有主要指数及近期走势
+/// 大盘指数列表页 — 展示国内及全球主要指数
 struct IndicesListView: View {
-    @State private var indices: [IndexItem] = []
+    @State private var domesticIndices: [IndexItem] = []
+    @State private var globalIndices: [IndexItem] = []
     @State private var isLoading = false
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 12) {
-                if isLoading && indices.isEmpty {
-                    ForEach(0..<6) { _ in
-                        skeletonRow
-                    }
+            VStack(spacing: 16) {
+                if isLoading && domesticIndices.isEmpty && globalIndices.isEmpty {
+                    skeletonGrid
                 } else {
-                    ForEach(indices) { index in
-                        NavigationLink {
-                            if let code = index.tsCode {
-                                IndexDetailView(code: code, name: index.name)
-                            }
-                        } label: {
-                            indexRow(index)
-                        }
-                        .buttonStyle(.plain)
+                    if !domesticIndices.isEmpty {
+                        section(title: "国内大盘", indices: domesticIndices)
+                    }
+
+                    if !globalIndices.isEmpty {
+                        section(title: "全球大盘", indices: globalIndices)
+                    }
+
+                    if domesticIndices.isEmpty && globalIndices.isEmpty && !isLoading {
+                        Text("暂无指数数据")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 40)
                     }
                 }
             }
@@ -30,78 +33,130 @@ struct IndicesListView: View {
         .background(Color(.systemBackground).ignoresSafeArea())
         .navigationTitle("大盘指数")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await loadData() }
+        .refreshable { await loadData(forceRefresh: true) }
         .task { await loadData() }
     }
 
-    private func loadData() async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            indices = try await StockService.fetchIndices()
-        } catch {
-            print("[IndicesList] 加载失败: \(error)")
+    private func section(title: String, indices: [IndexItem]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 4)
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3),
+                spacing: 12
+            ) {
+                ForEach(indices) { index in
+                    NavigationLink {
+                        if let code = index.tsCode {
+                            IndexDetailView(code: code, name: index.name)
+                        }
+                    } label: {
+                        indexCard(index)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
-    private func indexRow(_ item: IndexItem) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+    private func loadData(forceRefresh: Bool = false) async {
+        isLoading = true
+        defer { isLoading = false }
+
+        let policy: CachePolicy = forceRefresh ? .skipCache : .default
+
+        async let domesticTask = StockService.fetchDomesticIndices(policy: policy)
+        async let globalTask = StockService.fetchGlobalIndices(policy: policy)
+
+        do { domesticIndices = try await domesticTask } catch {
+            if error is CancellationError { return }
+            print("[IndicesList] 国内指数加载失败: \(error)")
+        }
+        do { globalIndices = try await globalTask } catch {
+            if error is CancellationError { return }
+            print("[IndicesList] 全球指数加载失败: \(error)")
+        }
+    }
+
+    private func indexCard(_ item: IndexItem) -> some View {
+        let trendColor = item.change >= 0 ? YPColor.up : YPColor.down
+
+        return VStack(spacing: 8) {
+            // 名称与代码
+            VStack(spacing: 2) {
                 Text(item.name)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
+
                 if let code = item.tsCode {
                     Text(code)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(String(format: "%.2f", item.value))
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(item.change >= 0 ? YPColor.up : YPColor.down)
-                Text(String(format: "%+.2f%%", item.change))
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(item.change >= 0 ? YPColor.up : YPColor.down)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
+            // 点位
+            Text(String(format: "%.2f", item.value))
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundStyle(trendColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
-            Image(systemName: "chevron.right")
-                .font(.caption2)
-                .foregroundStyle(.quaternary)
+            // 涨跌幅标签
+            Text(String(format: "%+.2f%%", item.change))
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .frame(maxWidth: .infinity)
+                .background(trendColor)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
         }
-        .padding(14)
+        .frame(height: 110)
+        .padding(12)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    private var skeletonRow: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color(.tertiarySystemFill))
-                    .frame(width: 80, height: 14)
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color(.tertiarySystemFill))
-                    .frame(width: 60, height: 10)
+    private var skeletonGrid: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3),
+            spacing: 12
+        ) {
+            ForEach(0..<6) { _ in
+                VStack(spacing: 8) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color(.tertiarySystemFill))
+                        .frame(width: 70, height: 14)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color(.tertiarySystemFill))
+                        .frame(width: 40, height: 10)
+
+                    Spacer(minLength: 0)
+
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color(.tertiarySystemFill))
+                        .frame(width: 80, height: 22)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color(.tertiarySystemFill))
+                        .frame(height: 20)
+                }
+                .frame(height: 110)
+                .padding(12)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            Spacer()
-            RoundedRectangle(cornerRadius: 3)
-                .fill(Color(.tertiarySystemFill))
-                .frame(width: 70, height: 16)
         }
-        .padding(14)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -194,6 +249,7 @@ struct IndexDetailView: View {
         do {
             dailyData = try await MarketService.fetchIndexDaily(code: code, limit: 30)
         } catch {
+            if error is CancellationError { return }
             print("[IndexDetail] 加载失败: \(error)")
         }
     }

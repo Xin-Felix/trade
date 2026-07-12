@@ -30,7 +30,8 @@ struct MoneyFlowBubbleView: View {
     let title: String
     var referenceScale: Double = 1
     var moveDuration: Double = 0.5
-    var simulatedTime: Double? = nil  // 非nil时用模拟时间渲染粒子（导出视频用）
+    var simulatedTime: Double? = nil
+    var disableFloat: Bool { simulatedTime != nil }  // 导出时禁用浮动
 
     private let maxRadius: CGFloat = 34
     private let minRadius: CGFloat = 14
@@ -76,7 +77,7 @@ struct MoneyFlowBubbleView: View {
 
                     // 气泡
                     ForEach(frames, id: \.id) { frame in
-                        BubbleNode(name: frame.name, netAmount: frame.netAmount, radius: frame.radius)
+                        BubbleNode(name: frame.name, netAmount: frame.netAmount, radius: frame.radius, disableFloat: disableFloat)
                             .position(frame.center)
                             .animation(.linear(duration: moveDuration), value: frame.center)
                             .animation(.linear(duration: moveDuration), value: frame.radius)
@@ -144,7 +145,7 @@ struct MoneyFlowBubbleView: View {
         guard count > 0, let idx = bubbles.firstIndex(where: { $0.id == bubble.id }) else {
             return size.width / 2
         }
-        let cols = min(count, 6)
+        let cols = min(count, 7)
         let col = idx % cols
         let padding: CGFloat = 44
         let usable = size.width - padding * 2
@@ -175,60 +176,83 @@ struct MoneyFlowBubbleView: View {
 
 // MARK: - 资金轮动粒子流
 
-/// 粒子从流出气泡（绿）流向流入气泡（红），表现资金从被卖板块流向被买板块。
-/// 每条流以「绿气泡 id」为稳定标识，即使目标红气泡切换，粒子也是平滑转向而非重置。
+/// 粒子从流出气泡（绿）流向流入气泡（红）。
+/// 每条流绑定到源气泡 id，目标是最近的红气泡中心。
+/// 当目标切换时，粒子路径平滑弯曲过渡而不是瞬移。
 private struct RotationParticles: View {
     let frames: [BubbleFrame]
     var simulatedTime: Double? = nil
 
-    private struct Stream: Identifiable {
-        let id: String     // 源（绿）气泡 id，稳定
-        let from: CGPoint  // 绿（流出）起点
-        let to: CGPoint    // 红（流入）终点
+    private struct Stream {
+        let id: String
+        let from: CGPoint
+        let to: CGPoint
         let intensity: Double
-        let phaseSeed: Double // 由 id 派生的稳定相位偏移
+        let phaseSeed: Double
     }
 
     private var streams: [Stream] {
-        let reds = frames.filter { $0.isInflow }
-        let greens = frames.filter { !$0.isInflow }
-        guard !reds.isEmpty, !greens.isEmpty else { return [] }
-
-        // 按 id 排序，保证配对稳定（不随资金大小重排）
-        let redsSorted = reds.sorted { $0.id < $1.id }
-        let greensSorted = greens.sorted { $0.id < $1.id }
+        let greens = frames.filter { !$0.isInflow && abs($0.netAmount) > 0.01 }
+        let reds = frames.filter { $0.isInflow && abs($0.netAmount) > 0.01 }
+        guard !greens.isEmpty, !reds.isEmpty else { return [] }
 
         var result: [Stream] = []
-        for (i, green) in greensSorted.enumerated() {
-            let red = redsSorted[i % redsSorted.count]
-            let intensity = min(abs(green.netAmount) / 30000.0, 1.0)
+        var assignedReds: Set<String> = []
+
+        // 第一轮：确保每个红气泡至少被一条绿指向
+        for red in reds {
+            // 找离这个红最近的绿
+            let nearest = greens.min(by: {
+                distance($0.center, red.center) < distance($1.center, red.center)
+            })!
             result.append(Stream(
-                id: green.id,
-                from: green.center,
+                id: "\(nearest.id)->\(red.id)",
+                from: nearest.center,
                 to: red.center,
-                intensity: intensity,
-                phaseSeed: stableSeed(green.id)
+                intensity: min(abs(nearest.netAmount) / 30000.0, 1.0),
+                phaseSeed: stableSeed(nearest.id + red.id)
             ))
+            assignedReds.insert(red.id)
         }
+
+        // 第二轮：剩余的绿气泡也发射流（指向最近的红）
+        for green in greens {
+            // 如果这个绿已经在第一轮中作为源用过了，检查它是否还有余力
+            let target = reds.min(by: {
+                distance($0.center, green.center) < distance($1.center, green.center)
+            })!
+            let streamId = "\(green.id)->\(target.id)"
+            // 避免完全重复
+            if !result.contains(where: { $0.id == streamId }) {
+                result.append(Stream(
+                    id: streamId,
+                    from: green.center,
+                    to: target.center,
+                    intensity: min(abs(green.netAmount) / 30000.0, 1.0),
+                    phaseSeed: stableSeed(green.id)
+                ))
+            }
+        }
+
         return result
     }
 
-    // 由 id 字符串派生 0~1 的稳定相位（同一会话内不变）
+    private func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
+    }
+
     private func stableSeed(_ id: String) -> Double {
-        let sum = id.unicodeScalars.reduce(0) { $0 + Int($1.value) }
-        return Double(sum % 100) / 100.0
+        Double(id.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 100) / 100.0
     }
 
     var body: some View {
         let streamList = streams
         if let simTime = simulatedTime {
-            // 导出模式：用模拟时间直接渲染（无 TimelineView）
             Canvas { ctx, _ in
                 drawParticles(ctx: ctx, streams: streamList, time: simTime)
             }
             .allowsHitTesting(false)
         } else {
-            // 实时模式：TimelineView 驱动
             TimelineView(.animation(minimumInterval: 1.0 / 60)) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 Canvas { ctx, _ in
@@ -295,6 +319,7 @@ struct BubbleNode: View {
     let name: String
     let netAmount: Double
     let radius: CGFloat
+    var disableFloat: Bool = false
 
     @State private var floatY: CGFloat = 0
     private var color: Color { netAmount >= 0 ? YPColor.up : YPColor.down }
@@ -345,13 +370,13 @@ struct BubbleNode: View {
             }
             .frame(width: diameter * 0.85)
         }
-        .offset(y: floatY)
+        .offset(y: disableFloat ? 0 : floatY)
         .onAppear {
+            guard !disableFloat else { return }
             withAnimation(.easeInOut(duration: Double.random(in: 2.5...3.5)).repeatForever(autoreverses: true)) {
                 floatY = CGFloat.random(in: -3...3)
             }
         }
-        // 颜色随资金正负渐变过渡
         .animation(.easeInOut(duration: 0.6), value: color)
     }
 

@@ -40,6 +40,9 @@ struct APITestView: View {
                     NavigationLink("大盘指数 GET /stocks/indices") {
                         APITestDetailView(test: .stockIndices)
                     }
+                    NavigationLink("全球大盘 GET /stocks/global-indices") {
+                        APITestDetailView(test: .globalIndices)
+                    }
                     NavigationLink("指数日线 GET /stocks/index-daily/{code}") {
                         APITestDetailView(test: .indexDaily)
                     }
@@ -265,6 +268,7 @@ enum APITestCase: String {
     case stockKlines
     case intradayKlines
     case stockIndices
+    case globalIndices
     case indexDaily
     case stockSearch
     case stockBasics
@@ -344,6 +348,7 @@ enum APITestCase: String {
         case .stockKlines: return "K线数据"
         case .intradayKlines: return "分时K线"
         case .stockIndices: return "大盘指数"
+        case .globalIndices: return "全球大盘"
         case .indexDaily: return "指数日线"
         case .stockSearch: return "股票搜索"
         case .stockBasics: return "股票列表"
@@ -628,7 +633,7 @@ struct APITestDetailView: View {
 
     private func setupParams() {
         switch test {
-        case .healthRoot, .healthCheck, .stockIndices, .watchlist, .weatherBeijing, .stockBasics, .syncConcept:
+        case .healthRoot, .healthCheck, .stockIndices, .globalIndices, .watchlist, .weatherBeijing, .stockBasics, .syncConcept:
             params = []
         case .stockConcepts:
             params = [
@@ -1022,6 +1027,8 @@ struct APITestDetailView: View {
             urlString = buildURL(baseURL + "/stocks/intraday/\(paramValue("code"))", queryKeys: ["period", "limit"])
         case .stockIndices:
             urlString = baseURL + "/stocks/indices"
+        case .globalIndices:
+            urlString = baseURL + "/stocks/global-indices"
         case .indexDaily:
             urlString = buildURL(baseURL + "/stocks/index-daily/\(paramValue("code"))", queryKeys: ["limit"])
         case .stockSearch:
@@ -1210,6 +1217,8 @@ struct APITestDetailView: View {
             requestURL = baseURL + "/stocks/intraday/\(paramValue("code"))"
         case .stockIndices:
             requestURL = baseURL + "/stocks/indices"
+        case .globalIndices:
+            requestURL = baseURL + "/stocks/global-indices"
         case .indexDaily:
             requestURL = baseURL + "/stocks/index-daily/\(paramValue("code"))"
         case .stockSearch:

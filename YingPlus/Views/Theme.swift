@@ -8,7 +8,13 @@ enum YPColor {
     static let brandPurple = Color(red: 0.55, green: 0.35, blue: 0.95)
     static let brandCyan = Color(red: 0.2, green: 0.78, blue: 0.85)
 
+    // 设计文档语义色
+    static let hot = Color(red: 0.96, green: 0.62, blue: 0.04)          // #F59E0B
+    static let international = Color(red: 0.08, green: 0.72, blue: 0.65) // #14B8A6
+    static let risk = Color(red: 0.94, green: 0.27, blue: 0.27)          // #EF4444
+
     // 功能色
+    static let market = brandBlue
     static let accent = brandBlue
     static let ai = brandPurple
     static let info = brandCyan
@@ -33,6 +39,14 @@ enum YPColor {
         startPoint: .leading,
         endPoint: .trailing
     )
+}
+
+// MARK: - UIKit 桥接
+
+extension YPColor {
+    static let uiUp = UIColor(red: 0.9, green: 0.2, blue: 0.2, alpha: 1)
+    static let uiDown = UIColor(red: 0.15, green: 0.7, blue: 0.35, alpha: 1)
+    static let uiAccent = UIColor(red: 0.2, green: 0.47, blue: 0.96, alpha: 1)
 }
 
 // MARK: - 通用 Section Header
@@ -64,15 +78,23 @@ struct SectionHeaderView: View {
 
 struct PlaceholderCard: View {
     let icon: String
+    let title: String
     let description: String
     var color: Color = .secondary
+
+    init(icon: String, title: String = "即将上线", description: String, color: Color = .secondary) {
+        self.icon = icon
+        self.title = title
+        self.description = description
+        self.color = color
+    }
 
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.title3)
                 .foregroundStyle(color.opacity(0.6))
-            Text("即将上线")
+            Text(title)
                 .font(.subheadline)
                 .fontWeight(.medium)
                 .foregroundStyle(.primary)

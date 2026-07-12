@@ -50,8 +50,15 @@ struct ImageCropView: View {
                 // 裁切遮罩
                 CropOverlay(cropSize: cropSize, totalSize: geo.size)
 
-                // 顶部/底部按钮
+                // 底部按钮 + 提示
                 VStack {
+                    Spacer()
+
+                    Text("移动和缩放照片")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .padding(.bottom, 20)
+
                     HStack {
                         Button("取消") {
                             onCancel()
@@ -69,14 +76,13 @@ struct ImageCropView: View {
                         .foregroundStyle(.white)
                         .padding()
                     }
-
-                    Spacer()
-
-                    Text("移动和缩放照片")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .padding(.bottom, 40)
+                    .padding(.bottom, 16)
+                    .background(
+                        Color.black.opacity(0.3)
+                            .ignoresSafeArea(edges: .bottom)
+                    )
                 }
+                .ignoresSafeArea(edges: .bottom)
             }
         }
     }
@@ -100,23 +106,25 @@ struct ImageCropView: View {
         let cropOffsetX = -offset.width
         let cropOffsetY = -offset.height
 
-        // 转换到原图坐标
+        // 转换到原图坐标（points -> pixels）
         let scaleX = imageSize.width / displaySize.width
         let scaleY = imageSize.height / displaySize.height
+        let pixelScale = image.scale
 
         let cropRectInImage = CGRect(
-            x: (displaySize.width / 2 - cropSize / 2 + cropOffsetX) * scaleX,
-            y: (displaySize.height / 2 - cropSize / 2 + cropOffsetY) * scaleY,
-            width: cropSize * scaleX,
-            height: cropSize * scaleY
+            x: (displaySize.width / 2 - cropSize / 2 + cropOffsetX) * scaleX * pixelScale,
+            y: (displaySize.height / 2 - cropSize / 2 + cropOffsetY) * scaleY * pixelScale,
+            width: cropSize * scaleX * pixelScale,
+            height: cropSize * scaleY * pixelScale
         )
 
-        // 确保不超出边界
+        // 确保不超出边界（cgImage 使用像素坐标）
+        let pixelSize = CGSize(width: imageSize.width * pixelScale, height: imageSize.height * pixelScale)
         let clampedRect = CGRect(
-            x: max(0, min(cropRectInImage.origin.x, imageSize.width - cropRectInImage.width)),
-            y: max(0, min(cropRectInImage.origin.y, imageSize.height - cropRectInImage.height)),
-            width: min(cropRectInImage.width, imageSize.width),
-            height: min(cropRectInImage.height, imageSize.height)
+            x: max(0, min(cropRectInImage.origin.x, pixelSize.width - cropRectInImage.width)),
+            y: max(0, min(cropRectInImage.origin.y, pixelSize.height - cropRectInImage.height)),
+            width: min(cropRectInImage.width, pixelSize.width),
+            height: min(cropRectInImage.height, pixelSize.height)
         )
 
         // 裁切
@@ -134,30 +142,28 @@ struct CropOverlay: View {
     let totalSize: CGSize
 
     var body: some View {
-        Canvas { context, size in
-            // 全屏半透明黑色
-            context.fill(
-                Path(CGRect(origin: .zero, size: size)),
-                with: .color(.black.opacity(0.6))
-            )
+        let cropRect = CGRect(
+            x: (totalSize.width - cropSize) / 2,
+            y: (totalSize.height - cropSize) / 2,
+            width: cropSize,
+            height: cropSize
+        )
 
-            // 中间正方形挖空
-            let cropRect = CGRect(
-                x: (size.width - cropSize) / 2,
-                y: (size.height - cropSize) / 2,
-                width: cropSize,
-                height: cropSize
-            )
-            context.blendMode = .clear
-            context.fill(Path(roundedRect: cropRect, cornerRadius: 0), with: .color(.white))
-        }
-        .allowsHitTesting(false)
-
-        // 正方形边框
-        RoundedRectangle(cornerRadius: 0)
-            .stroke(.white.opacity(0.8), lineWidth: 1)
-            .frame(width: cropSize, height: cropSize)
+        ZStack {
+            // 使用 even-odd 填充规则：大矩形减去中间正方形，形成遮罩
+            Path { path in
+                path.addRect(CGRect(origin: .zero, size: totalSize))
+                path.addRect(cropRect)
+            }
+            .fill(.black.opacity(0.6), style: FillStyle(eoFill: true))
             .allowsHitTesting(false)
+
+            // 正方形边框
+            RoundedRectangle(cornerRadius: 0)
+                .stroke(.white.opacity(0.8), lineWidth: 1)
+                .frame(width: cropSize, height: cropSize)
+                .allowsHitTesting(false)
+        }
     }
 }
 

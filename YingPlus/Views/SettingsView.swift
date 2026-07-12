@@ -2,8 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @Binding var isLoggedIn: Bool
-    @AppStorage("appearanceMode") private var appearanceMode: Int = 0
     @State private var userProfile: UserProfile?
+    @State private var pointsBalance: PointsBalance?
 
     var body: some View {
         NavigationStack {
@@ -18,21 +18,27 @@ struct SettingsView: View {
             .background(Color(.systemBackground).ignoresSafeArea())
             .navigationTitle("我的")
             .task {
-                await loadProfile()
+                await loadData()
             }
             .onReceive(NotificationCenter.default.publisher(for: .userProfileUpdated)) { _ in
-                Task { await loadProfile() }
+                Task { await loadData() }
             }
         }
     }
 
     // MARK: - 数据加载
 
-    private func loadProfile() async {
+    private func loadData() async {
         do {
             userProfile = try await UserService.fetchProfile()
         } catch {
             print("[Settings] 用户信息加载失败: \(error)")
+        }
+
+        do {
+            pointsBalance = try await PointsService.fetchBalance()
+        } catch {
+            print("[Settings] 积分余额加载失败: \(error)")
         }
     }
 
@@ -77,12 +83,24 @@ struct SettingsView: View {
                 switch phase {
                 case .success(let image):
                     image.resizable().scaledToFill()
-                default:
+                case .failure(let error):
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFill()
+                        .onAppear {
+                            print("[Settings] 头像加载失败: \(avatarURL), error: \(error.localizedDescription)")
+                        }
+                case .empty:
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFill()
+                @unknown default:
                     Image("AppLogo")
                         .resizable()
                         .scaledToFill()
                 }
             }
+            .id(url)
         } else {
             Image("AppLogo")
                 .resizable()
@@ -94,64 +112,47 @@ struct SettingsView: View {
 
     private var pointsSection: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "star.circle.fill")
+            NavigationLink {
+                PointsView()
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "star.circle.fill")
+                                .foregroundStyle(YPColor.warning)
+                            Text("我的积分")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                        }
+                        Text("\(pointsBalance?.balance ?? 0)")
+                            .font(.title)
+                            .fontWeight(.bold)
                             .foregroundStyle(YPColor.warning)
-                        Text("我的积分")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
                     }
-                    Text("0")
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .foregroundStyle(YPColor.warning)
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("免费版")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.gray)
+                            .clipShape(Capsule())
+                        Text("解锁更多 AI 功能")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("免费版")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.gray)
-                        .clipShape(Capsule())
-                    Text("解锁更多 AI 功能")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                .padding()
+                .contentShape(Rectangle())
             }
-            .padding()
-
-            Divider()
-                .padding(.horizontal)
-
-            HStack(spacing: 0) {
-                pointsAction(icon: "plus.circle", title: "充值积分")
-                pointsAction(icon: "clock.arrow.circlepath", title: "积分记录")
-                pointsAction(icon: "crown", title: "会员特权")
-                pointsAction(icon: "gift", title: "邀请奖励")
-            }
-            .padding(.vertical, 12)
+            .buttonStyle(.plain)
         }
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func pointsAction(icon: String, title: String) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(YPColor.accent)
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - 功能菜单
@@ -167,14 +168,18 @@ struct SettingsView: View {
             Divider().padding(.leading, 52)
 
             NavigationLink {
-                AppSettingsView(isLoggedIn: $isLoggedIn, appearanceMode: $appearanceMode)
+                AppSettingsView(isLoggedIn: $isLoggedIn)
             } label: {
                 menuRow(icon: "gear", title: "设置", color: .secondary)
             }
 
             Divider().padding(.leading, 52)
 
-            menuRow(icon: "questionmark.circle", title: "帮助与反馈", color: YPColor.accent)
+            NavigationLink {
+                H5PageView(slug: "help-feedback", defaultTitle: "帮助与反馈")
+            } label: {
+                menuRow(icon: "questionmark.circle", title: "帮助与反馈", color: YPColor.accent)
+            }
 
             Divider().padding(.leading, 52)
 
@@ -215,25 +220,55 @@ struct SettingsView: View {
 
 struct AppSettingsView: View {
     @Binding var isLoggedIn: Bool
-    @Binding var appearanceMode: Int
+    @AppStorage("appearanceMode") private var appearanceMode: Int = 0
+    @State private var showClearCacheAlert = false
+    @State private var cacheSizeText = "--"
 
     var body: some View {
         List {
             Section("外观") {
-                Picker("主题模式", selection: $appearanceMode) {
-                    Text("跟随系统").tag(0)
-                    Text("浅色").tag(1)
-                    Text("深色").tag(2)
+                HStack(spacing: 0) {
+                    ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                        Button {
+                            appearanceMode = mode.rawValue
+                        } label: {
+                            Text(mode.title)
+                                .font(.subheadline)
+                                .fontWeight(appearanceMode == mode.rawValue ? .semibold : .regular)
+                                .foregroundStyle(appearanceMode == mode.rawValue ? .white : .primary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(appearanceMode == mode.rawValue ? YPColor.accent : Color.clear)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .pickerStyle(.segmented)
+                .background(Color(.tertiarySystemFill))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
             Section("缓存") {
-                HStack {
-                    Text("清除缓存")
-                    Spacer()
-                    Text("--")
-                        .foregroundStyle(.secondary)
+                Button {
+                    showClearCacheAlert = true
+                } label: {
+                    HStack {
+                        Text("清除缓存")
+                        Spacer()
+                        Text(cacheSizeText)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .alert("清除缓存", isPresented: $showClearCacheAlert) {
+                    Button("取消", role: .cancel) {}
+                    Button("清除", role: .destructive) {
+                        KLineCacheService.clearAll()
+                        APICacheService.shared.clearAll()
+                        SectorIntradayCacheService.clearAll()
+                        updateCacheSize()
+                    }
+                } message: {
+                    Text("清除本地 K 线缓存，下次进入行情页会重新加载。")
                 }
             }
 
@@ -263,6 +298,45 @@ struct AppSettingsView: View {
         }
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            updateCacheSize()
+        }
+    }
+
+    private enum AppearanceMode: Int, CaseIterable {
+        case system = 0
+        case light = 1
+        case dark = 2
+
+        var title: String {
+            switch self {
+            case .system: return "跟随系统"
+            case .light: return "浅色"
+            case .dark: return "深色"
+            }
+        }
+    }
+
+    private func updateCacheSize() {
+        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("kline_cache", isDirectory: true)
+        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.fileSizeKey]) else {
+            cacheSizeText = "--"
+            return
+        }
+        var totalSize: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            guard let attrs = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
+                  let size = attrs.fileSize else { continue }
+            totalSize += Int64(size)
+        }
+        cacheSizeText = formatBytes(totalSize)
+    }
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
     }
 }
 
@@ -295,7 +369,7 @@ struct ContentManageView: View {
 
             Spacer()
 
-            Text("即将上线，敬请期待")
+            Text("功能开发中，敬请期待")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.bottom, 32)

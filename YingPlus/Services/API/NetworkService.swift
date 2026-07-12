@@ -3,6 +3,16 @@ import Foundation
 extension Notification.Name {
     /// 收到 401 未授权响应时发送，监听方应清除登录态并回到登录页
     static let sessionUnauthorized = Notification.Name("sessionUnauthorized")
+    /// 收到 402 需要付费/积分时发送，携带 PaymentRequiredInfo
+    static let paymentRequired = Notification.Name("paymentRequired")
+}
+
+struct PaymentRequiredInfo {
+    let featureCode: String
+    let reason: String
+    let requiredPoints: Int
+    let requiredTier: String?
+    let balance: Int
 }
 
 final class NetworkService {
@@ -56,7 +66,12 @@ final class NetworkService {
             request.httpBody = try JSONEncoder().encode(body)
         }
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            throw CancellationError()
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
@@ -69,10 +84,20 @@ final class NetworkService {
             setAuthToken(nil)
             NotificationCenter.default.post(name: .sessionUnauthorized, object: nil)
             throw APIError.unauthorized
+        case 402:
+            let info = parsePaymentRequired(data: data, featureCode: nil)
+            NotificationCenter.default.post(name: .paymentRequired, object: info)
+            throw APIError.paymentRequired(
+                featureCode: info.featureCode,
+                reason: info.reason,
+                requiredPoints: info.requiredPoints,
+                requiredTier: info.requiredTier,
+                balance: info.balance
+            )
         case 500..<600:
             throw APIError.serverError
         default:
-            let message = String(data: data, encoding: .utf8)
+            let message = parseErrorMessage(data: data)
             throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
         }
 
@@ -116,7 +141,12 @@ final class NetworkService {
             request.httpBody = try JSONEncoder().encode(body)
         }
 
-        let (_, response) = try await session.data(for: request)
+        let (_, response): (Data, URLResponse)
+        do {
+            (_, response) = try await session.data(for: request)
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            throw CancellationError()
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
@@ -129,11 +159,69 @@ final class NetworkService {
             setAuthToken(nil)
             NotificationCenter.default.post(name: .sessionUnauthorized, object: nil)
             throw APIError.unauthorized
+        case 402:
+            let info = parsePaymentRequired(data: Data(), featureCode: nil)
+            NotificationCenter.default.post(name: .paymentRequired, object: info)
+            throw APIError.paymentRequired(
+                featureCode: info.featureCode,
+                reason: info.reason,
+                requiredPoints: info.requiredPoints,
+                requiredTier: info.requiredTier,
+                balance: info.balance
+            )
         case 500..<600:
             throw APIError.serverError
         default:
             throw APIError.httpError(statusCode: httpResponse.statusCode, message: nil)
         }
+    }
+    private func parsePaymentRequired(data: Data, featureCode: String?) -> PaymentRequiredInfo {
+        let defaultInfo = PaymentRequiredInfo(
+            featureCode: featureCode ?? "",
+            reason: "该功能需要积分或会员权限",
+            requiredPoints: 0,
+            requiredTier: nil,
+            balance: 0
+        )
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let detail = json["detail"] as? [String: Any] else {
+            return defaultInfo
+        }
+
+        return PaymentRequiredInfo(
+            featureCode: (detail["feature_code"] as? String) ?? featureCode ?? "",
+            reason: (detail["reason"] as? String) ?? defaultInfo.reason,
+            requiredPoints: (detail["required_points"] as? Int) ?? 0,
+            requiredTier: detail["required_tier"] as? String,
+            balance: (detail["balance"] as? Int) ?? 0
+        )
+    }
+
+    private func parseErrorMessage(data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return String(data: data, encoding: .utf8)
+        }
+
+        let detail = json["detail"]
+        if let message = detail as? String {
+            return message
+        }
+        if let dict = detail as? [String: Any] {
+            // 优先取 reason，否则返回格式化后的字典字符串
+            if let reason = dict["reason"] as? String {
+                return reason
+            }
+            if let prettyData = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted]),
+               let prettyString = String(data: prettyData, encoding: .utf8) {
+                return prettyString
+            }
+        }
+        if let prettyData = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted]),
+           let prettyString = String(data: prettyData, encoding: .utf8) {
+            return prettyString
+        }
+        return String(data: data, encoding: .utf8)
     }
 }
 

@@ -1,6 +1,12 @@
 import SwiftUI
 import PhotosUI
 
+/// 包装 UIImage 使其可作为 fullScreenCover(item:) 的参数
+struct CropImageWrapper: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
 struct ProfileEditView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -16,12 +22,7 @@ struct ProfileEditView: View {
     // 图片选择
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var selectedImage: UIImage?
-    @State private var showImageSizeAlert = false
-    @State private var imageToCrop: UIImage?
-    @State private var showCropView = false
-
-    /// 最大图片文件大小限制（MB）
-    private let maxImageSizeMB: Double = 5.0
+    @State private var imageToCrop: CropImageWrapper?
 
     var body: some View {
         ScrollView {
@@ -38,27 +39,19 @@ struct ProfileEditView: View {
         .task {
             await loadProfile()
         }
-        .alert("图片过大", isPresented: $showImageSizeAlert) {
-            Button("知道了", role: .cancel) {}
-        } message: {
-            Text("请选择小于 \(Int(maxImageSizeMB))MB 的图片")
-        }
-        .fullScreenCover(isPresented: $showCropView) {
-            if let imageToCrop {
-                ImageCropView(
-                    image: imageToCrop,
-                    onCropped: { croppedImage in
-                        showCropView = false
-                        selectedImage = croppedImage
-                        Task { await uploadAvatar(image: croppedImage) }
-                    },
-                    onCancel: {
-                        showCropView = false
-                        self.imageToCrop = nil
-                        selectedPhoto = nil
-                    }
-                )
-            }
+        .fullScreenCover(item: $imageToCrop) { wrapper in
+            ImageCropView(
+                image: wrapper.image,
+                onCropped: { croppedImage in
+                    imageToCrop = nil
+                    selectedImage = croppedImage
+                    Task { await uploadAvatar(image: croppedImage) }
+                },
+                onCancel: {
+                    imageToCrop = nil
+                    selectedPhoto = nil
+                }
+            )
         }
         .overlay {
             if isLoading {
@@ -105,11 +98,19 @@ struct ProfileEditView: View {
                 }
             }
 
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(YPColor.down)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
             Text("点击更换头像")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
 
-            Text("支持 jpg/png/gif/webp，最大 \(Int(maxImageSizeMB))MB")
+            Text("支持 jpg/png/gif/webp 格式")
                 .font(.caption2)
                 .foregroundStyle(.quaternary)
         }
@@ -127,13 +128,19 @@ struct ProfileEditView: View {
                 switch phase {
                 case .success(let image):
                     image.resizable().scaledToFill()
-                case .failure:
+                case .failure(let error):
                     defaultAvatar
-                default:
+                        .onAppear {
+                            print("[ProfileEdit] 头像加载失败: \(avatarURL), error: \(error.localizedDescription)")
+                        }
+                case .empty:
                     ProgressView()
                         .frame(width: 100, height: 100)
+                @unknown default:
+                    defaultAvatar
                 }
             }
+            .id(url)
         } else {
             defaultAvatar
         }
@@ -280,40 +287,71 @@ struct ProfileEditView: View {
     private func handlePhotoSelection(_ item: PhotosPickerItem?) async {
         guard let item else { return }
 
-        // 加载图片数据
-        guard let data = try? await item.loadTransferable(type: Data.self) else {
-            errorMessage = "无法读取图片"
-            return
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                errorMessage = "无法读取图片数据"
+                print("[ProfileEdit] loadTransferable 返回 nil")
+                return
+            }
+            // 用 ImageIO 直接下采样，比 UIImage(data:) 再 UIGraphicsImageRenderer 快很多
+            guard let image = downsampleImageFromData(data, maxDimension: 1024) else {
+                errorMessage = "图片格式不支持"
+                print("[ProfileEdit] 下采样失败，data 大小: \(data.count)")
+                return
+            }
+            print("[ProfileEdit] 加载图片成功: \(image.size)")
+            presentCropView(image: image)
+        } catch {
+            errorMessage = "读取图片失败: \(error.localizedDescription)"
+            print("[ProfileEdit] 加载图片失败: \(error)")
         }
+    }
 
-        // 检查原始文件大小
-        let sizeMB = Double(data.count) / (1024.0 * 1024.0)
-        if sizeMB > maxImageSizeMB {
-            showImageSizeAlert = true
-            selectedPhoto = nil
-            return
-        }
-
-        guard let image = UIImage(data: data) else {
-            errorMessage = "图片格式不支持"
-            return
-        }
-
+    private func presentCropView(image: UIImage) {
         errorMessage = nil
         successMessage = nil
+        imageToCrop = CropImageWrapper(image: image)
+    }
 
-        // 显示裁切界面
-        imageToCrop = image
-        showCropView = true
+    /// 使用 ImageIO 直接生成缩略图，避免解码整张大图
+    private func downsampleImageFromData(_ data: Data, maxDimension: CGFloat) -> UIImage? {
+        guard let imageSource = CGImageSourceCreateWithData(
+            data as CFData,
+            [kCGImageSourceShouldCache: false] as CFDictionary
+        ) else {
+            return nil
+        }
+
+        let options: [NSString: Any] = [
+            kCGImageSourceThumbnailMaxPixelSize: maxDimension,
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: false
+        ]
+
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary) else {
+            return nil
+        }
+
+        return UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
     }
 
     private func uploadAvatar(image: UIImage) async {
         isUploadingAvatar = true
         defer { isUploadingAvatar = false }
 
+        // 清理裁剪和照片选择状态，避免重复选择同一张图时不触发 onChange
+        imageToCrop = nil
+        selectedPhoto = nil
+
         do {
             let result = try await UserService.uploadAvatar(image: image, maxSizeKB: 500)
+            // 立即使用上传返回的公共 URL 显示头像，避免等待 /auth/me 刷新
             avatarURL = result.url
+            // 上传成功后把 object_key 同步到用户资料
+            let updated = try await UserService.updateProfile(avatar: result.objectKey)
+            profile = updated
+            avatarURL = updated.avatar ?? result.url
             successMessage = "头像上传成功"
             errorMessage = nil
             // 通知外部刷新
