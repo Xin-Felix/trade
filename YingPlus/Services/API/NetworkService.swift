@@ -22,8 +22,17 @@ final class NetworkService {
     private var authToken: String?
     private let tokenLock = NSLock()
 
-    init(session: URLSession = .shared) {
-        self.session = session
+    private static func makeSession() -> URLSession {
+        let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 12
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }
+
+    init(session: URLSession? = nil) {
+        self.session = session ?? Self.makeSession()
     }
 
     func setAuthToken(_ token: String?) {

@@ -57,14 +57,21 @@ enum StockService {
             ("000016.SH", "上证50"),
             ("000905.SH", "中证500"),
         ]
-
-        var result: [IndexItem] = []
-        for item in extras {
-            if let index = try? await fetchIndexDailyLatest(code: item.code, name: item.name) {
-                result.append(index)
+        return await withTaskGroup(of: (Int, IndexItem?).self) { group in
+            for (index, item) in extras.enumerated() {
+                group.addTask {
+                    let result = try? await fetchIndexDailyLatest(code: item.code, name: item.name)
+                    return (index, result)
+                }
             }
+            var indexed: [(Int, IndexItem)] = []
+            for await (index, item) in group {
+                if let item = item {
+                    indexed.append((index, item))
+                }
+            }
+            return indexed.sorted { $0.0 < $1.0 }.map(\.1)
         }
-        return result
     }
 
     private static func fetchIndexDailyLatest(code: String, name: String) async throws -> IndexItem {
@@ -100,29 +107,71 @@ enum StockService {
         return try await NetworkService.shared.request(url)
     }
 
-    /// 获取自选股列表（从后端获取，按加入时间排序，然后并发拉取行情）
+    /// 获取自选股列表（从后端获取，再通过批量行情接口一次拉取所有报价）
     static func fetchWatchlist() async throws -> [StockData] {
         let url = APIConfiguration.shared.apiV1URL + "/stocks/watchlist"
         let response: WatchlistResponse = try await NetworkService.shared.request(url)
         let items = response.items
+        // 同步后端数据到本地缓存
+        WatchlistService.syncFromBackend(items)
         guard !items.isEmpty else { return [] }
-
-        // 并发拉取行情，保持后端返回的顺序
-        return await withTaskGroup(of: (Int, StockData?).self) { group in
-            for (index, item) in items.enumerated() {
-                group.addTask {
-                    let stock = try? await fetchQuote(code: item.code)
-                    return (index, stock)
+        // 优先使用批量接口（1 个请求），失败则降级为并发逐个拉取
+        let codes = items.map(\.code).joined(separator: ",")
+        do {
+            return try await fetchQuotesBatch(codes: codes)
+        } catch {
+            // 降级：并发拉取每只股票行情
+            return await withTaskGroup(of: (Int, StockData?).self) { group in
+                for (index, item) in items.enumerated() {
+                    group.addTask {
+                        let stock = try? await fetchQuote(code: item.code)
+                        return (index, stock)
+                    }
                 }
-            }
-
-            var indexed: [(Int, StockData)] = []
-            for await (index, stock) in group {
-                if let stock = stock {
-                    indexed.append((index, stock))
+                var indexed: [(Int, StockData)] = []
+                for await (index, stock) in group {
+                    if let stock = stock {
+                        indexed.append((index, stock))
+                    }
                 }
+                return indexed.sorted { $0.0 < $1.0 }.map(\.1)
             }
-            return indexed.sorted { $0.0 < $1.0 }.map(\.1)
+        }
+    }
+
+    /// 批量获取多只股票行情（单次请求）
+    static func fetchQuotesBatch(codes: String) async throws -> [StockData] {
+        var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/quotes")!
+        components.queryItems = [
+            URLQueryItem(name: "codes", value: codes)
+        ]
+        guard let url = components.url?.absoluteString else {
+            throw APIError.invalidURL
+        }
+        return try await NetworkService.shared.request(url)
+    }
+
+        /// 聚合详情响应
+    struct StockDetailResponse: Codable {
+        let quote: StockData
+        let dailyBasic: DailyBasicData?
+        let concepts: [StockConcept]
+        let moneyflow: [MoneyFlowData]
+
+        enum CodingKeys: String, CodingKey {
+            case quote
+            case dailyBasic = "daily_basic"
+            case concepts
+            case moneyflow
+        }
+    }
+
+    /// 获取股票聚合详情（quote + dailyBasic + concepts + moneyflow，1个请求）
+    static func fetchStockDetail(code: String, policy: CachePolicy = .default) async throws -> StockDetailResponse {
+        let url = APIConfiguration.shared.apiV1URL + "/stocks/detail/\(code)"
+        let key = "stock_detail_\(code)_\(MarketCalendar.formatTradeDate(MarketCalendar.latestTradeDate()))"
+        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
+            try await NetworkService.shared.request(url)
         }
     }
 
@@ -191,21 +240,34 @@ enum StockService {
         try await NetworkService.shared.requestVoid(url, method: .delete)
     }
 
+    /// 通过 OCR 文本导入持仓（替换现有持仓）
+    static func importPortfolioFromText(_ text: String) async throws -> PortfolioImportResponse {
+        let url = APIConfiguration.shared.apiV1URL + "/stocks/portfolio/import-text"
+        let body = PortfolioImportBody(text: text)
+        return try await NetworkService.shared.request(url, method: .post, body: body)
+    }
+
     /// 获取分时 K 线数据（1/5/15/30/60 分钟）
+    /// - tradeDate 为 nil 时请求最新实时数据（盘中走 akshare），不跨交易日缓存
     static func fetchIntradayKlines(code: String, period: String = "1", limit: Int = 241, tradeDate: String? = nil, policy: CachePolicy = .default) async throws -> [IntradayKlineData] {
         if let tradeDate = tradeDate {
-            return try await fetchIntradayKlinesRaw(code: code, period: period, limit: limit, tradeDate: tradeDate)
+            // 查看指定历史交易日：走按交易日回退缓存
+            let (items, _) = try await MarketDataRequest.fetchWithTradeDateFallback(
+                keyPrefix: "intraday_\(code)_\(period)_\(limit)",
+                policy: policy,
+                ttl: .untilNextTradingDay,
+                shouldFallback: { $0.isEmpty }
+            ) { date in
+                try await fetchIntradayKlinesRaw(code: code, period: period, limit: limit, tradeDate: date)
+            }
+            return items
         }
 
-        let (items, _) = try await MarketDataRequest.fetchWithTradeDateFallback(
-            keyPrefix: "intraday_\(code)_\(period)_\(limit)",
-            policy: policy,
-            ttl: .untilNextTradingDay,
-            shouldFallback: { $0.isEmpty }
-        ) { date in
-            try await fetchIntradayKlinesRaw(code: code, period: period, limit: limit, tradeDate: date)
+        // 请求最新实时数据：短缓存 30s，避免盘中显示旧数据
+        let key = "intraday_live_\(code)_\(period)_\(limit)"
+        return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .seconds(30)) {
+            try await fetchIntradayKlinesLive(code: code, period: period, limit: limit)
         }
-        return items
     }
 
     private static func fetchIntradayKlinesRaw(code: String, period: String, limit: Int, tradeDate: String) async throws -> [IntradayKlineData] {
@@ -214,6 +276,18 @@ enum StockService {
             URLQueryItem(name: "period", value: period),
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "trade_date", value: tradeDate)
+        ]
+        guard let url = components.url?.absoluteString else {
+            throw APIError.invalidURL
+        }
+        return try await NetworkService.shared.request(url)
+    }
+
+    private static func fetchIntradayKlinesLive(code: String, period: String, limit: Int) async throws -> [IntradayKlineData] {
+        var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/intraday/\(code)")!
+        components.queryItems = [
+            URLQueryItem(name: "period", value: period),
+            URLQueryItem(name: "limit", value: String(limit))
         ]
         guard let url = components.url?.absoluteString else {
             throw APIError.invalidURL

@@ -8,6 +8,7 @@ struct WatchlistView: View {
     @State private var filterMode: FilterMode = .all
 
     @State private var selectedStockForPortfolio: StockData?
+    @State private var showingPortfolioImport = false
 
     private enum FilterMode: String, CaseIterable {
         case all = "全部自选"
@@ -43,6 +44,11 @@ struct WatchlistView: View {
                     onSave: { Task { await loadWatchlist() } }
                 )
             }
+            .sheet(isPresented: $showingPortfolioImport) {
+                PortfolioImportView {
+                    Task { await loadWatchlist() }
+                }
+            }
         }
     }
 
@@ -67,17 +73,22 @@ struct WatchlistView: View {
                 )
 
                 if filterMode == .portfolio {
-                    HStack(spacing: 4) {
-                        Image(systemName: "hand.tap.fill")
-                            .font(.caption2)
-                        Text("长按设置持仓")
-                            .font(.caption2)
+                    Button {
+                        showingPortfolioImport = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "camera.viewfinder")
+                                .font(.caption2)
+                            Text("截图导入")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(YPColor.accent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(YPColor.accent.opacity(0.1))
+                        .clipShape(Capsule())
                     }
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color(.tertiarySystemBackground))
-                    .clipShape(Capsule())
+                    .buttonStyle(.plain)
                 }
 
                 if isLoading {
@@ -328,7 +339,7 @@ struct WatchlistView: View {
             portfolio = try await StockService.fetchPortfolio()
         } catch {
             if error is CancellationError { return }
-            print("[Watchlist] 切换持仓失败: \(error.localizedDescription)")
+            errorMessage = "操作持仓失败: \(error.localizedDescription)"
         }
     }
 
@@ -451,16 +462,54 @@ struct WatchlistView: View {
         errorMessage = nil
         defer { isLoading = false }
 
+        // 独立加载自选和持仓，避免一个失败导致另一个也不显示
+        var fetchedWatchlist: [StockData] = []
+        var fetchedPortfolio: [PortfolioItem] = []
+
         do {
-            async let watchlistTask = StockService.fetchWatchlist()
-            async let portfolioTask = StockService.fetchPortfolio()
-            watchlist = try await watchlistTask
-            portfolio = try await portfolioTask
+            fetchedWatchlist = try await StockService.fetchWatchlist()
         } catch APIError.unauthorized {
             errorMessage = "未登录"
+            return
         } catch {
             if error is CancellationError { return }
-            errorMessage = "加载失败: \(error.localizedDescription)"
+            errorMessage = "加载自选失败: \(error.localizedDescription)"
+            return
+        }
+
+        do {
+            fetchedPortfolio = try await StockService.fetchPortfolio()
+        } catch {
+            if !(error is CancellationError) {
+                print("[Watchlist] 加载持仓失败: \(error.localizedDescription)")
+            }
+        }
+
+        portfolio = fetchedPortfolio
+
+        // 确保持仓中的股票也有行情数据（即使不在自选列表中）
+        let watchlistCodes = Set(fetchedWatchlist.map(\.code))
+        let missingPortfolioCodes = fetchedPortfolio.map(\.code).filter { !watchlistCodes.contains($0) }
+        if missingPortfolioCodes.isEmpty {
+            watchlist = fetchedWatchlist
+        } else {
+            let codes = missingPortfolioCodes.joined(separator: ",")
+            var extraQuotes: [StockData] = []
+            do {
+                extraQuotes = try await StockService.fetchQuotesBatch(codes: codes)
+            } catch {
+                extraQuotes = await withTaskGroup(of: StockData?.self) { group in
+                    for code in missingPortfolioCodes {
+                        group.addTask { try? await StockService.fetchQuote(code: code) }
+                    }
+                    var results: [StockData] = []
+                    for await result in group {
+                        if let r = result { results.append(r) }
+                    }
+                    return results
+                }
+            }
+            watchlist = fetchedWatchlist + extraQuotes
         }
     }
 }

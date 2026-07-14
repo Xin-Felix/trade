@@ -7,7 +7,12 @@ enum APIEnvironment {
     var baseURL: String {
         switch self {
         case .development:
-//             return "http://172.17.80.171:8000"
+            // 模拟器直接访问 host 的 localhost；真机调试时改成 Mac 当前局域网 IP
+            #if targetEnvironment(simulator)
+//            return "http://127.0.0.1:8000"
+            #else
+//            return "http://172.17.80.171:8000"
+            #endif
             return "http://192.168.31.86:8000"
         case .production:
             return "https://api.example.com"

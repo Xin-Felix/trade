@@ -95,3 +95,36 @@ extension PortfolioItem {
         costPrice != nil && quantity != nil
     }
 }
+
+
+// MARK: - 持仓导入
+
+/// 导入持仓请求
+struct PortfolioImportBody: Encodable {
+    let text: String
+}
+
+/// 导入持仓响应
+struct PortfolioImportResponse: Decodable {
+    let success: Bool
+    let imported: [[String: AnyCodableValue]]
+    let total: Int
+}
+
+/// 通用 JSON 值包装，用于解码 imported 数组中的异构字典
+enum AnyCodableValue: Decodable {
+    case string(String)
+    case int(Int)
+    case double(Double)
+    case bool(Bool)
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let v = try? container.decode(String.self) { self = .string(v) }
+        else if let v = try? container.decode(Int.self) { self = .int(v) }
+        else if let v = try? container.decode(Double.self) { self = .double(v) }
+        else if let v = try? container.decode(Bool.self) { self = .bool(v) }
+        else { self = .null }
+    }
+}

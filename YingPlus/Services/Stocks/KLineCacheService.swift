@@ -54,19 +54,32 @@ enum KLineCacheService {
         }
     }
 
-    /// 合并本地缓存与新数据，按 tradeDate 去重，保留新数据
+    /// 合并本地缓存与新数据。
+    /// 策略：保留本地缓存中早于远端最旧日期的部分，再拼接远端数据。
+    /// 这样可以正确处理周K/月K的 tradeDate 每天变化（同一周不同日期）的问题。
     static func merge(local: [KlineData], remote: [KlineData]) -> [KlineData] {
-        var mergedByDate: [String: KlineData] = [:]
+        guard !remote.isEmpty else { return local }
+        guard !local.isEmpty else { return remote.sorted { $0.tradeDate < $1.tradeDate } }
 
-        for item in local {
-            mergedByDate[item.tradeDate] = item
+        let sortedRemote = remote.sorted { $0.tradeDate < $1.tradeDate }
+        let earliestRemoteDate = sortedRemote.first!.tradeDate
+
+        // 本地只保留严格早于远端最早日期的数据（避免同周/同月重复）
+        let localOlder = local.filter { $0.tradeDate < earliestRemoteDate }
+            .sorted { $0.tradeDate < $1.tradeDate }
+
+        // 拼接：旧本地 + 全部远端
+        var merged = localOlder + sortedRemote
+
+        // 最终按日期去重（以防万一）
+        var seen: Set<String> = []
+        merged = merged.filter { item in
+            if seen.contains(item.tradeDate) { return false }
+            seen.insert(item.tradeDate)
+            return true
         }
 
-        for item in remote {
-            mergedByDate[item.tradeDate] = item
-        }
-
-        return mergedByDate.values.sorted { $0.tradeDate < $1.tradeDate }
+        return merged
     }
 
     /// 清理所有缓存

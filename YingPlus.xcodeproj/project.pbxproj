@@ -70,7 +70,7 @@
 		CE044296A5D8D4D90FDF3A9B /* StockService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA34AF39D2BA60387ABA2A4 /* StockService.swift */; };
 		D2356C5051C4C61ABA30465B /* SectorMoneyflowTrendChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64CD85F4B4FC0CB10BD7ECE5 /* SectorMoneyflowTrendChartView.swift */; };
 		D3E4F5A6B7C8D9E0F1A2B3C4 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E4F5A6B7C8D9E0F1A2B3C5 /* Theme.swift */; };
-		D84FE14B7986F4A6A754A124 /* PortfolioEditSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E78CA5115A08B2DA3F95F1 /* PortfolioEditSheet.swift */; };
+		D84FE14B7986F4A6A754A124 /* PortfolioEditSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E78CA5115A08B2DA3F95F1 /* PortfolioEditSheet.swift */; }; 6FF40B3C968866CA5CA17D00 /* PortfolioImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44691162809D884184D951E7 /* PortfolioImportView.swift */; };
 		D9E0F1A2B3C4D5E6F7A8B9CA /* IndicesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E0F1A2B3C4D5E6F7A8B9CB /* IndicesListView.swift */; };
 		E0F1A2B3C4D5E6F7A8B9CADB /* SectorDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0F1A2B3C4D5E6F7A8B9CADC /* SectorDetailView.swift */; };
 		E4BB5B406853D6FD27BB65E3 /* DailyQuoteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 588BCFD46690BF3FBB449067 /* DailyQuoteService.swift */; };
@@ -127,7 +127,7 @@
 		000000000000000000000702 /* PreloadedHomeData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/PreloadedHomeData.swift; sourceTree = "<group>"; };
 		00126C855F38287DBD6E0E48 /* MarkdownHTMLRenderer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MarkdownHTMLRenderer.swift; path = YingPlus/Services/MarkdownHTMLRenderer.swift; sourceTree = SOURCE_ROOT; };
 		018BFBA6B179E44B6E5C011B /* MarketSentimentCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MarketSentimentCard.swift; path = YingPlus/Views/Common/MarketSentimentCard.swift; sourceTree = "<group>"; };
-		03E78CA5115A08B2DA3F95F1 /* PortfolioEditSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PortfolioEditSheet.swift; path = YingPlus/Views/PortfolioEditSheet.swift; sourceTree = "<group>"; };
+		03E78CA5115A08B2DA3F95F1 /* PortfolioEditSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PortfolioEditSheet.swift; path = YingPlus/Views/PortfolioEditSheet.swift; sourceTree = "<group>"; }; 44691162809D884184D951E7 /* PortfolioImportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PortfolioImportView.swift; path = YingPlus/Views/PortfolioImportView.swift; sourceTree = "<group>"; };
 		20072055-D008-4617-BE96-4B8BB7FEC299 /* ReportShareView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReportShareView.swift; path = YingPlus/Views/Common/ReportShareView.swift; sourceTree = "<group>"; };
 		21BE17A6C66C9454AB4A720D /* MarketDataRequest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MarketDataRequest.swift; path = YingPlus/Services/API/MarketDataRequest.swift; sourceTree = "<group>"; };
 		23D134C3723C63D44B26473C /* TopListView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TopListView.swift; path = YingPlus/Views/TopListView.swift; sourceTree = "<group>"; };
@@ -230,7 +230,7 @@
 				23D134C3723C63D44B26473C /* TopListView.swift */,
 				5C240AC1A0E0F90F48065D3C /* UnusualMovesView.swift */,
 				EB5C4ABF3C8F004A5879515A /* SectorCorrelationView.swift */,
-				03E78CA5115A08B2DA3F95F1 /* PortfolioEditSheet.swift */,
+				03E78CA5115A08B2DA3F95F1 /* PortfolioEditSheet.swift */, 44691162809D884184D951E7 /* PortfolioImportView.swift */,
 				21BE17A6C66C9454AB4A720D /* MarketDataRequest.swift */,
 			);
 			sourceTree = "<group>";
@@ -501,7 +501,7 @@
 				A1B2C3D4E5F6A7B8C9D0E3F2 /* PositionAdviceView.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E4F2 /* MorningReportView.swift in Sources */,
 				6012FABBDD875739C2D3C836 /* MarkdownHTMLRenderer.swift in Sources */,
-				D84FE14B7986F4A6A754A124 /* PortfolioEditSheet.swift in Sources */,
+				D84FE14B7986F4A6A754A124 /* PortfolioEditSheet.swift in Sources */, 6FF40B3C968866CA5CA17D00 /* PortfolioImportView.swift in Sources */,
 				AB6D1DB2F4093F56A243992F /* MarketDataRequest.swift in Sources */,
 			);
 		};

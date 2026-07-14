@@ -86,11 +86,50 @@ struct ReportShareCard: View {
 
     @ViewBuilder
     private func markdownContent(_ content: String) -> some View {
-        let blocks = content.components(separatedBy: "\n\n")
+        let blocks = splitIntoBlocks(content)
         ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
             renderBlock(block)
                 .padding(.bottom, index < blocks.count - 1 ? blockSpacing(for: block) : 0)
         }
+    }
+
+    /// 智能分块：确保每个标题独立成块，正文按段落分组
+    private func splitIntoBlocks(_ content: String) -> [String] {
+        var blocks: [String] = []
+        var currentBlock: [String] = []
+        let lines = content.components(separatedBy: .newlines)
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // 空行 → 结束当前块
+            if trimmed.isEmpty {
+                if !currentBlock.isEmpty {
+                    blocks.append(currentBlock.joined(separator: "\n"))
+                    currentBlock = []
+                }
+                continue
+            }
+
+            // 标题行 → 先结束前一块，标题独立成块
+            if trimmed.hasPrefix("# ") || trimmed.hasPrefix("## ") || trimmed.hasPrefix("### ") {
+                if !currentBlock.isEmpty {
+                    blocks.append(currentBlock.joined(separator: "\n"))
+                    currentBlock = []
+                }
+                blocks.append(trimmed)
+                continue
+            }
+
+            // 普通行追加到当前块
+            currentBlock.append(trimmed)
+        }
+
+        if !currentBlock.isEmpty {
+            blocks.append(currentBlock.joined(separator: "\n"))
+        }
+
+        return blocks
     }
 
     @ViewBuilder
@@ -99,11 +138,14 @@ struct ReportShareCard: View {
         if trimmed.isEmpty {
             Color.clear.frame(height: 6)
         } else if trimmed.hasPrefix("# ") {
-            blockTitle(String(trimmed.dropFirst(2)), size: 20)
+            let text = String(trimmed.dropFirst(2)).components(separatedBy: .newlines).first ?? ""
+            blockTitle(text, size: 20)
         } else if trimmed.hasPrefix("## ") {
-            blockTitle(String(trimmed.dropFirst(3)), size: 17)
+            let text = String(trimmed.dropFirst(3)).components(separatedBy: .newlines).first ?? ""
+            blockTitle(text, size: 17)
         } else if trimmed.hasPrefix("### ") {
-            blockTitle(String(trimmed.dropFirst(4)), size: 15)
+            let text = String(trimmed.dropFirst(4)).components(separatedBy: .newlines).first ?? ""
+            blockTitle(text, size: 16)
         } else if trimmed.hasPrefix("> ") {
             Text(String(trimmed.dropFirst(2)))
                 .font(.system(size: 14, weight: .regular))
@@ -121,9 +163,9 @@ struct ReportShareCard: View {
                     blockTitle(first, size: 17)
                     let rest = lines.dropFirst().joined(separator: "\n")
                     renderRichParagraph(rest)
-                        .font(.system(size: 15, weight: .regular))
+                        .font(.system(size: 14, weight: .regular))
                         .foregroundStyle(Color(.secondaryLabel))
-                        .lineSpacing(9)
+                        .lineSpacing(8)
                 }
             } else if lines.count == 1, isImplicitTitle(trimmed) {
                 blockTitle(trimmed, size: 17)
@@ -135,9 +177,9 @@ struct ReportShareCard: View {
                 }
             } else {
                 renderRichParagraph(trimmed)
-                    .font(.system(size: 15, weight: .regular))
+                    .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(Color(.secondaryLabel))
-                    .lineSpacing(9)
+                    .lineSpacing(8)
             }
         }
     }
@@ -154,9 +196,9 @@ struct ReportShareCard: View {
 
     private func blockTitle(_ text: String, size: CGFloat) -> some View {
         Text(text)
-            .font(.system(size: size, weight: .medium))
+            .font(.system(size: size, weight: .semibold))
             .foregroundStyle(.primary)
-            .padding(.top, size == 20 ? 6 : (size == 17 ? 4 : 2))
+            .padding(.top, size == 20 ? 10 : (size == 17 ? 6 : 4))
     }
 
     private func listItem(_ line: String) -> some View {
@@ -164,11 +206,11 @@ struct ReportShareCard: View {
         let text = String(trimmed.dropFirst(2))
         return HStack(alignment: .top, spacing: 8) {
             Text("•")
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(type.themeColor)
                 .frame(width: 14, alignment: .center)
             renderRichParagraph(text)
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(Color(.secondaryLabel))
                 .lineSpacing(6)
         }
@@ -188,20 +230,20 @@ struct ReportShareCard: View {
                   let contentRange = Range(match.range(at: 1), in: text) else { continue }
             let before = String(text[lastIndex..<fullRange.lowerBound])
             let boldContent = String(text[contentRange])
-            result = result + Text(before).font(.system(size: 15, weight: .regular))
-            result = result + Text(boldContent).font(.system(size: 15, weight: .medium))
+            result = result + Text(before).font(.system(size: 14, weight: .regular))
+            result = result + Text(boldContent).font(.system(size: 14, weight: .semibold))
             lastIndex = fullRange.upperBound
         }
         let after = String(text[lastIndex...])
-        return result + Text(after).font(.system(size: 15, weight: .regular))
+        return result + Text(after).font(.system(size: 14, weight: .regular))
     }
 
     private func blockSpacing(for block: String) -> CGFloat {
         let trimmed = block.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix("# ") { return 18 }
+        if trimmed.hasPrefix("# ") { return 16 }
         if trimmed.hasPrefix("## ") { return 14 }
-        if trimmed.hasPrefix("### ") { return 12 }
-        return 12
+        if trimmed.hasPrefix("### ") { return 10 }
+        return 10
     }
 
     private var footerWatermark: some View {

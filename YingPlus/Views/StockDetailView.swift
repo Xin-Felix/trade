@@ -47,10 +47,7 @@ struct StockDetailView: View {
                 VStack(spacing: 0) {
                     headerView
                     klineSection
-                    stockInfoSection
                     detailContentSection
-                    // TODO: 新闻 section
-                    // TODO: 公告 section
                 }
             }
         }
@@ -71,6 +68,19 @@ struct StockDetailView: View {
         }
         .onDisappear {
             stopAutoRefresh()
+        }
+        .sheet(isPresented: $showingPortfolioSheet) {
+            PortfolioEditSheet(
+                code: code,
+                name: name,
+                existingItem: currentPortfolioItem,
+                onSave: {
+                    Task {
+                        await loadPortfolioStatus()
+                        portfolioUpdateFlag += 1
+                    }
+                }
+            )
         }
     }
 
@@ -138,19 +148,6 @@ struct StockDetailView: View {
                             .font(.title3)
                             .foregroundStyle(YPColor.accent)
                     }
-                    .sheet(isPresented: $showingPortfolioSheet) {
-                        PortfolioEditSheet(
-                            code: code,
-                            name: name,
-                            existingItem: currentPortfolioItem,
-                            onSave: {
-                                Task {
-                                    await loadPortfolioStatus()
-                                    portfolioUpdateFlag += 1
-                                }
-                            }
-                        )
-                    }
                 } else {
                     Button {
                         showingPortfolioSheet = true
@@ -160,19 +157,6 @@ struct StockDetailView: View {
                             .foregroundStyle(Color.gray)
                     }
                     .buttonStyle(.plain)
-                    .sheet(isPresented: $showingPortfolioSheet) {
-                        PortfolioEditSheet(
-                            code: code,
-                            name: name,
-                            existingItem: nil,
-                            onSave: {
-                                Task {
-                                    await loadPortfolioStatus()
-                                    portfolioUpdateFlag += 1
-                                }
-                            }
-                        )
-                    }
                 }
 
                 Button {
@@ -204,15 +188,21 @@ struct StockDetailView: View {
 
     private var headerStatsGrid: some View {
         let stats = headerStats
-        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 4) {
-            statItem("今开", value: stats.open)
-            statItem("最高", value: stats.high)
-            statItem("最低", value: stats.low)
-            statItem("昨收", value: stats.preClose)
-            statItem("成交量", value: stats.volume, isVolume: true)
-            statItem("成交额", value: stats.amount, isVolume: true)
-            statItem("换手", value: stats.turnoverRate, suffix: "%")
-            statItem("量比", value: stats.volumeRatio)
+        return VStack(spacing: 0) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 4) {
+                statItem("今开", value: stats.open)
+                statItem("最高", value: stats.high)
+                statItem("最低", value: stats.low)
+                statItem("昨收", value: stats.preClose)
+                statItem("成交量", value: stats.volume, isVolume: true)
+                statItem("成交额", value: stats.amount, isVolume: true)
+                statItem("换手", value: stats.turnoverRate, suffix: "%")
+                statItem("量比", value: stats.volumeRatio)
+                statItem("总市值", value: dailyBasic?.totalMv, isVolume: true)
+                statItem("流通市值", value: dailyBasic?.circMv, isVolume: true)
+                statItem("PE", value: dailyBasic?.pe)
+                statItem("PB", value: dailyBasic?.pb)
+            }
         }
     }
 
@@ -330,6 +320,7 @@ struct StockDetailView: View {
     }
 
     private var selectedKlineChangePercent: Double? {
+        // 用户选中了某根 K 线 → 用选中价格与昨收计算涨跌幅
         if let selectedKline = selectedKline {
             if let preClose = quote?.preClose, preClose != 0 {
                 return (selectedKline.close - preClose) / preClose * 100
@@ -338,36 +329,39 @@ struct StockDetailView: View {
             return (selectedKline.close - selectedKline.open) / selectedKline.open * 100
         }
 
-        if selectedPeriod.usesIntradayData, let preClose = quote?.preClose, preClose != 0,
-           let latestClose = latestIntradayClose {
-            return (latestClose - preClose) / preClose * 100
-        }
-
+        // 未选中时：优先用 quote 的实时涨跌幅（盘后/非交易时段分时数据等于昨收，会导致 0%）
         return quote?.changePercent
     }
 
     private var selectedKlineChange: Double? {
-        guard let percent = selectedKlineChangePercent else { return nil }
         if let selectedKline = selectedKline {
-            return selectedKline.close * percent / 100
+            // 选中 K 线时，涨跌额 = 选中价 - 昨收
+            if let preClose = quote?.preClose {
+                return selectedKline.close - preClose
+            }
+            return nil
         }
-        if selectedPeriod.usesIntradayData, let latestClose = latestIntradayClose {
-            return latestClose * percent / 100
-        }
-        if let price = quote?.price {
-            return price * percent / 100
+        // 未选中时：涨跌额 = 当前价 - 昨收
+        if let price = quote?.price, let preClose = quote?.preClose {
+            return price - preClose
         }
         return nil
     }
 
     private var displayPrice: Double? {
+        // 用户选中了某根 K 线 → 显示选中价格
         if let selectedKline = selectedKline {
             return selectedKline.close
         }
+        // 未选中时：优先用 quote 的实时价格（最权威、最新）
+        if let price = quote?.price {
+            return price
+        }
+        // quote 尚未加载时降级到分时最新收盘价
         if selectedPeriod.usesIntradayData, let latestClose = latestIntradayClose {
             return latestClose
         }
-        return quote?.price
+        return nil
     }
 
     private var latestIntradayClose: Double? {
@@ -570,69 +564,6 @@ struct StockDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
-    }
-
-    // MARK: - 股票基础信息
-
-    private var stockInfoSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .lastTextBaseline, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(name)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                    Text(code)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    if let price = displayPrice {
-                        Text(String(format: "%.2f", price))
-                            .font(.title3)
-                            .fontWeight(.bold)
-                            .foregroundStyle(displayColor)
-                    } else {
-                        Text("--")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack(spacing: 6) {
-                        if let changePercent = selectedKlineChangePercent {
-                            Text(String(format: "%+.2f%%", changePercent))
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(displayColor)
-                        }
-                        if let change = selectedKlineChange {
-                            Text(String(format: "%+.2f", change))
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(displayColor)
-                        }
-                    }
-                }
-            }
-
-            if let dailyBasic = dailyBasic {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    indicatorItem("总市值", value: dailyBasic.totalMv, suffix: nil, isVolume: true)
-                    indicatorItem("流通市值", value: dailyBasic.circMv, suffix: nil, isVolume: true)
-                    indicatorItem("市盈率 PE", value: dailyBasic.pe, suffix: nil)
-                    indicatorItem("PE TTM", value: dailyBasic.peTtm, suffix: nil)
-                    indicatorItem("市净率 PB", value: dailyBasic.pb, suffix: nil)
-                    indicatorItem("换手率", value: dailyBasic.turnoverRate, suffix: "%")
-                }
-            }
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal, 12)
-        .padding(.top, 12)
     }
 
     // MARK: - Indicators Content
@@ -1067,19 +998,50 @@ struct StockDetailView: View {
     // MARK: - Data Loading
 
     private func loadData() async {
-        async let quoteTask: () = loadQuote()
+        // 同步自选股缓存（确保星标状态正确）
+        async let watchlistSync: () = syncWatchlistCache()
+        // 聚合请求：quote + dailyBasic + concepts + moneyflow 合并为 1 个请求
+        async let detailTask: () = loadDetail()
+        // 其余请求保持并行
         async let intradayTask: () = loadIntraday()
         async let klinesTask: () = loadKlines()
         async let dailyKlinesTask: () = loadDailyKlines()
-        async let indicatorsTask: () = loadIndicators()
-        async let moneyflowTask: () = loadMoneyflow()
-        async let conceptsTask: () = loadConcepts()
         async let companyTask: () = loadCompanyInfo()
         async let finaTask: () = loadFinaIndicator()
         async let topListTask: () = loadTopList()
         async let topInstTask: () = loadTopInst()
         async let portfolioTask: () = loadPortfolioStatus()
-        _ = await (quoteTask, intradayTask, klinesTask, dailyKlinesTask, indicatorsTask, moneyflowTask, conceptsTask, companyTask, finaTask, topListTask, topInstTask, portfolioTask)
+        _ = await (watchlistSync, detailTask, intradayTask, klinesTask, dailyKlinesTask, companyTask, finaTask, topListTask, topInstTask, portfolioTask)
+    }
+
+    /// 从后端同步自选股列表到本地缓存，确保星标显示正确
+    private func syncWatchlistCache() async {
+        do {
+            let url = APIConfiguration.shared.apiV1URL + "/stocks/watchlist"
+            let response: WatchlistResponse = try await NetworkService.shared.request(url)
+            WatchlistService.syncFromBackend(response.items)
+            watchlistUpdateFlag += 1
+        } catch {
+            // 同步失败不影响页面，静默处理
+        }
+    }
+
+    /// 聚合加载：一次请求获取 quote + dailyBasic + concepts + moneyflow
+    private func loadDetail(policy: CachePolicy = .default) async {
+        do {
+            let detail = try await StockService.fetchStockDetail(code: code, policy: policy)
+            quote = detail.quote
+            dailyBasic = detail.dailyBasic
+            concepts = detail.concepts
+            moneyflow = detail.moneyflow.first
+        } catch {
+            print("加载聚合详情失败: \(error.localizedDescription)")
+            // 降级：分别加载
+            await loadQuote(policy: policy)
+            await loadIndicators(policy: policy)
+            await loadConcepts(policy: policy)
+            await loadMoneyflow(policy: policy)
+        }
     }
 
     private func loadQuote(policy: CachePolicy = .default) async {
