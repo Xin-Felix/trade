@@ -49,7 +49,6 @@ struct SectorIntradayFlowView: View {
     @State private var globalMaxAbs: Double = 1
     @State private var isExporting = false
     @State private var exportProgress: Double = 0
-    @State private var showExportDone = false
     @State private var isLoading = false
     @State private var loadError: String?
     @State private var tradeDate: String = ""
@@ -60,6 +59,7 @@ struct SectorIntradayFlowView: View {
 
     private let baseFPS: Double = 12.0
     private let maxSelectionCount: Int = 30
+    private let defaultSelectionCount: Int = 20
 
     private var selectedIds: [String] {
         switch sectorType {
@@ -84,8 +84,11 @@ struct SectorIntradayFlowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            sectorTypePicker
+                .disabled(isLoading)
+
             if isLoading && allFrames.isEmpty {
-                skeletonView
+                skeletonContent
             } else if let error = loadError, allFrames.isEmpty {
                 Spacer()
                 VStack(spacing: 12) {
@@ -102,7 +105,6 @@ struct SectorIntradayFlowView: View {
                 .padding()
                 Spacer()
             } else {
-                sectorTypePicker
                 playerBar
 
                 ScrollView {
@@ -188,7 +190,7 @@ struct SectorIntradayFlowView: View {
                     Button {
                         Task { await exportVideo() }
                     } label: {
-                        Image(systemName: isExporting ? "arrow.clockwise.circle" : "square.and.arrow.down")
+                        Image(systemName: isExporting ? "arrow.clockwise.circle" : "square.and.arrow.up")
                             .font(.body)
                             .foregroundStyle(isExporting ? .secondary : YPColor.accent)
                     }
@@ -202,8 +204,19 @@ struct SectorIntradayFlowView: View {
                 }
             }
         }
-        .onAppear { Task { await loadRealData() } }
+        .onAppear {
+            Task {
+                await initializeSelectionIfNeeded()
+                await loadRealData()
+            }
+        }
         .onDisappear { stopPlaying() }
+        .onChange(of: selectedConceptIds) { _, newValue in
+            saveSelection(newValue, for: .concept)
+        }
+        .onChange(of: selectedIndustryIds) { _, newValue in
+            saveSelection(newValue, for: .industry)
+        }
         .sheet(isPresented: $showSectorPicker) {
             SectorPickerView(
                 type: sectorType,
@@ -222,6 +235,43 @@ struct SectorIntradayFlowView: View {
         case .industry:
             return $selectedIndustryIds
         }
+    }
+
+    // MARK: - 选择持久化
+
+    private func selectionStorageKey(for type: SectorType) -> String {
+        "SectorIntradayFlowView.selectedIds.\(type.rawValue)"
+    }
+
+    private func initializeSelectionIfNeeded() async {
+        switch sectorType {
+        case .concept:
+            guard selectedConceptIds.isEmpty else { return }
+            selectedConceptIds = await loadSavedOrDefaultSelection(for: .concept)
+        case .industry:
+            guard selectedIndustryIds.isEmpty else { return }
+            selectedIndustryIds = await loadSavedOrDefaultSelection(for: .industry)
+        }
+    }
+
+    private func loadSavedOrDefaultSelection(for type: SectorType) async -> [String] {
+        let key = selectionStorageKey(for: type)
+        if let saved = UserDefaults.standard.array(forKey: key) as? [String], !saved.isEmpty {
+            return Array(saved.prefix(maxSelectionCount))
+        }
+        do {
+            let (_, defaultIds) = try await ConceptFlowService.fetchSectorOptions(type: type)
+            let selected = Array(defaultIds.prefix(defaultSelectionCount))
+            UserDefaults.standard.set(selected, forKey: key)
+            return selected
+        } catch {
+            return []
+        }
+    }
+
+    private func saveSelection(_ ids: [String], for type: SectorType) {
+        let key = selectionStorageKey(for: type)
+        UserDefaults.standard.set(Array(ids.prefix(maxSelectionCount)), forKey: key)
     }
 
     // MARK: - 加载真实数据
@@ -412,7 +462,10 @@ struct SectorIntradayFlowView: View {
             stopPlaying()
             currentIndex = 0
             allFrames = []
-            Task { await loadRealData() }
+            Task {
+                await initializeSelectionIfNeeded()
+                await loadRealData()
+            }
         }
     }
 
@@ -467,76 +520,69 @@ struct SectorIntradayFlowView: View {
         .padding(.horizontal)
         .overlay(alignment: .bottom) {
             if isExporting {
-                ProgressView(value: exportProgress)
-                    .tint(YPColor.accent)
-                    .padding(.horizontal, 16)
+                VStack(spacing: 6) {
+                    Text("导出中 \(Int(exportProgress * 100))%")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.white)
+                    ProgressView(value: exportProgress)
+                        .tint(.white)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(Color.black.opacity(0.75))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, 40)
+                .padding(.bottom, 20)
             }
-        }
-        .alert("保存成功", isPresented: $showExportDone) {
-            Button("好的") {}
-        } message: {
-            Text("视频已保存到相册")
         }
     }
 
     // MARK: - 骨架屏
 
-    private var skeletonView: some View {
-        VStack(spacing: 0) {
-            // 类型选择器占位
-            HStack(spacing: 4) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(.tertiarySystemFill))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(.tertiarySystemFill))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
-            .frame(height: 46)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal)
-            .padding(.top, 8)
+    private var skeletonContent: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 0) {
+                    playerBarSkeleton
 
-            // 播放器占位
-            VStack(spacing: 10) {
-                HStack(spacing: 12) {
-                    Circle().fill(Color(.tertiarySystemFill)).frame(width: 28, height: 28)
-                    RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(width: 60, height: 22)
-                    Spacer()
-                    RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(width: 120, height: 22)
-                    RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(width: 28, height: 22)
-                }
-                RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(height: 8)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color(.secondarySystemBackground))
-            .padding(.horizontal)
-            .padding(.top, 12)
-
-            // 气泡区占位
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.tertiarySystemFill))
-                .frame(height: 400)
-                .padding(.horizontal)
-            .padding(.top, 16)
-
-            // 列表行占位
-            VStack(spacing: 8) {
-                ForEach(0..<8, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 16)
                         .fill(Color(.tertiarySystemFill))
-                        .frame(height: 50)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 16)
+                        .frame(height: max(280, min(geometry.size.height * 0.42, 480)))
+                        .padding(.horizontal)
+                        .padding(.top, 16)
 
-            Spacer()
+                    LazyVStack(spacing: 8) {
+                        ForEach(0..<8, id: \.self) { _ in
+                            SkeletonRow()
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 16)
+
+                    Spacer(minLength: 40)
+                }
+                .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
+            }
         }
+    }
+
+    private var playerBarSkeleton: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                Circle().fill(Color(.tertiarySystemFill)).frame(width: 28, height: 28)
+                RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(width: 60, height: 22)
+                Spacer()
+                RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(width: 120, height: 22)
+                RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(width: 28, height: 22)
+            }
+            RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(height: 8)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
     }
 
     // MARK: - 播放控制
@@ -609,20 +655,39 @@ struct SectorIntradayFlowView: View {
 
                 let time = dataIdx < allFrames.count ? allFrames[dataIdx].time : ""
                 let sectorTitle = sectorType == .concept ? "概念" : "行业"
+                let todayStr: String = {
+                    let fmt = DateFormatter()
+                    fmt.dateFormat = "yyyy-MM-dd"
+                    return fmt.string(from: Date())
+                }()
 
-                return MoneyFlowBubbleView(
-                    bubbles: bubbles,
-                    title: "\(sectorTitle)板块资金流向 \(time)",
-                    referenceScale: globalMaxAbs,
-                    moveDuration: 0,
-                    simulatedTime: simTime
-                )
+                return ZStack(alignment: .bottomTrailing) {
+                    MoneyFlowBubbleView(
+                        bubbles: bubbles,
+                        title: "\(sectorTitle)板块资金流向 \(todayStr) \(time)",
+                        referenceScale: globalMaxAbs,
+                        moveDuration: 0,
+                        simulatedTime: simTime
+                    )
+
+                    // 水印
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10))
+                        Text("盈多多")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.6))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.3))
+                    .clipShape(Capsule())
+                    .padding(10)
+                }
                 .background(Color(.systemBackground))
             }
 
-            try await VideoRecorder.saveToPhotos(url: url)
-            showExportDone = true
-            try? FileManager.default.removeItem(at: url)
+            ShareService.shareVideo(url: url)
         } catch {
             print("[Export] 失败: \(error)")
         }
@@ -937,7 +1002,7 @@ struct SectorPickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("恢复默认") {
+                    Button("查看热门") {
                         selectedIds = Array(defaultIds.prefix(maxSelection))
                     }
                 }
@@ -968,7 +1033,7 @@ struct SectorPickerView: View {
                 options = loadedOptions
                 defaultIds = loadedDefaults
                 if selectedIds.isEmpty {
-                    selectedIds = Array(defaultIds.prefix(maxSelection))
+                    selectedIds = Array(defaultIds.prefix(min(20, maxSelection)))
                 }
                 isLoading = false
             }

@@ -276,23 +276,12 @@ struct ReportShareCard: View {
     }
 }
 
-/// 报告分享服务：渲染卡片为图片并保存到相册
+/// 报告分享服务：渲染卡片为图片并通过系统分享面板分享
 enum ReportShareService {
-    /// 将分享卡片渲染为 UIImage
+    /// 将分享卡片渲染为 UIImage（已含水印）
+    @MainActor
     static func renderImage(type: ReportShareCard.ReportType, date: String, status: String, content: String) -> UIImage? {
-        let card = ReportShareCard(type: type, date: date, status: status, content: content)
-        let renderer = ImageRenderer(content: card)
-        renderer.proposedSize = ProposedViewSize(width: 390, height: nil)
-        renderer.scale = UIScreen.main.scale
-        return renderer.uiImage
-    }
-
-    /// 保存图片到相册
-    static func saveImageToAlbum(_ image: UIImage, completion: ((Error?) -> Void)? = nil) {
-        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-        // 使用闭包回调需要实现 UIImageWriteToSavedPhotosAlbum 的 target/selector
-        // 这里简化处理，实际保存成功/失败由系统提示
-        completion?(nil)
+        ShareService.renderReportImage(type: type, date: date, status: status, content: content)
     }
 }
 
@@ -303,35 +292,23 @@ struct ReportShareToolbarButton: View {
     let status: String
     let content: String
     @State private var isSharing = false
-    @State private var showSavedAlert = false
 
     var body: some View {
         Button {
             shareReport()
         } label: {
-            Image(systemName: "square.and.arrow.down")
+            Image(systemName: "square.and.arrow.up")
         }
         .disabled(isSharing)
-        .alert("已保存到相册", isPresented: $showSavedAlert) {
-            Button("确定") {}
-        }
     }
 
     private func shareReport() {
         isSharing = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            if let image = ReportShareService.renderImage(type: type, date: date, status: status, content: content) {
-                ReportShareService.saveImageToAlbum(image) { _ in
-                    DispatchQueue.main.async {
-                        isSharing = false
-                        showSavedAlert = true
-                    }
-                }
-            } else {
-                DispatchQueue.main.async {
-                    isSharing = false
-                }
+        Task { @MainActor in
+            if let image = ShareService.renderReportImage(type: type, date: date, status: status, content: content) {
+                ShareService.shareImage(image)
             }
+            isSharing = false
         }
     }
 }

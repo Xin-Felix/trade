@@ -79,24 +79,36 @@ struct SplashView: View {
         let start = Date()
         let autoLoginError = await ensureLogin()
 
-        // 并发加载每日一言和首页数据
-        let loadTask = Task {
-            async let quote = loadDailyQuote()
-            async let homeData = loadHomeData()
-            return await (quote, homeData)
-        }
+        // 每日一言独立加载（不受超时影响）
+        let quoteTask = Task { await loadDailyQuote() }
 
-        // 3 秒超时哨兵：超过则取消预加载，用已拿到的数据进入首页
+        // 首页数据加载（带超时）
+        let homeTask = Task { await loadHomeData() }
         let timeoutTask = Task {
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            loadTask.cancel()
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            homeTask.cancel()
         }
 
-        let (quote, homeData): (DailyQuoteData?, PreloadedHomeData)
+        // 等待每日一言（最多 2 秒）
+        let quote: DailyQuoteData?
+        let quoteTimeout = Task<DailyQuoteData?, Never> {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            return nil
+        }
+        quote = await withTaskGroup(of: DailyQuoteData?.self) { group in
+            group.addTask { await quoteTask.value }
+            group.addTask { await quoteTimeout.value }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+
+        // 等待首页数据
+        let homeData: PreloadedHomeData
         do {
-            (quote, homeData) = try await loadTask.value
+            homeData = try await homeTask.value
         } catch {
-            (quote, homeData) = (nil, PreloadedHomeData(domesticIndices: [], globalIndices: [], watchlist: [], hotSectors: [], dailyQuote: nil))
+            homeData = PreloadedHomeData(domesticIndices: [], globalIndices: [], watchlist: [], hotSectors: [], dailyQuote: nil)
             print("[Splash] 预加载超时或被取消")
         }
         timeoutTask.cancel()
@@ -105,9 +117,9 @@ struct SplashView: View {
             self.dailyQuote = quote
         }
 
-        // 保证至少展示 1.5 秒，但整个启动屏不超过 3 秒
+        // 保证至少展示 1.2 秒
         let elapsed = Date().timeIntervalSince(start)
-        let remaining = max(0, 1.5 - elapsed)
+        let remaining = max(0, 1.2 - elapsed)
         if remaining > 0 {
             try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
         }
@@ -129,10 +141,20 @@ struct SplashView: View {
 
     private func ensureLogin() async -> String? {
         guard NetworkService.shared.getAuthToken() == nil else { return nil }
+        // 5 秒超时，避免后端不可达时卡死启动页
+        let loginTask = Task {
+            try await AuthService.loginWithTestAccount()
+        }
+        let timeoutTask = Task {
+            try await Task.sleep(nanoseconds: 5_000_000_000)
+            loginTask.cancel()
+        }
         do {
-            _ = try await AuthService.loginWithTestAccount()
+            _ = try await loginTask.value
+            timeoutTask.cancel()
             return nil
         } catch {
+            timeoutTask.cancel()
             return "自动登录失败: \(error.localizedDescription)"
         }
     }

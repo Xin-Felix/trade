@@ -375,6 +375,7 @@ enum StockService {
         startDate: String,
         endDate: String,
         topN: Int = 30,
+        tsCodes: [String]? = nil,
         policy: CachePolicy = .default
     ) async throws -> SectorMoneyflowTrendResponse {
         var components = URLComponents(string: APIConfiguration.shared.apiV1URL + "/stocks/sector-moneyflow/trend")!
@@ -384,12 +385,16 @@ enum StockService {
             URLQueryItem(name: "end_date", value: endDate),
             URLQueryItem(name: "top_n", value: String(topN))
         ]
+        if let tsCodes, !tsCodes.isEmpty {
+            components.queryItems?.append(URLQueryItem(name: "ts_codes", value: tsCodes.joined(separator: ",")))
+        }
 
         guard let url = components.url?.absoluteString else {
             throw APIError.invalidURL
         }
 
-        let key = "sector_moneyflow_trend_\(sectorType.rawValue)_\(startDate)_\(endDate)_\(topN)"
+        let codesKey = tsCodes?.joined(separator: "_") ?? ""
+        let key = "sector_moneyflow_trend_\(sectorType.rawValue)_\(startDate)_\(endDate)_\(topN)_\(codesKey)"
         return try await APICacheService.shared.fetch(key: key, policy: policy, ttl: .untilNextTradingDay) {
             try await NetworkService.shared.request(url)
         }

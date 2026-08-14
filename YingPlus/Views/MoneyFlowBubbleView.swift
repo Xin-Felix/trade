@@ -169,7 +169,7 @@ struct MoneyFlowBubbleView: View {
     private func dot(_ color: Color, _ label: String) -> some View {
         HStack(spacing: 3) {
             Circle().fill(color.opacity(0.7)).frame(width: 7, height: 7)
-            Text(label).font(.system(size: 9)).foregroundStyle(.quaternary)
+            Text(label).font(.system(size: 9)).foregroundStyle(.secondary)
         }
     }
 }

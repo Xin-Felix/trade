@@ -26,6 +26,13 @@ struct ContentView: View {
                     showSplash = false
                 }
                 .transition(.opacity)
+                .task {
+                    // 兜底：6 秒后强制关闭启动屏，防止任何原因导致的黑屏
+                    try? await Task.sleep(nanoseconds: 6_000_000_000)
+                    if showSplash {
+                        showSplash = false
+                    }
+                }
             }
         }
         .onAppear {

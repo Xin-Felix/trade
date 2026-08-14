@@ -33,7 +33,7 @@ struct SectorRow: View {
             Text("\(index + 1)")
                 .font(.caption)
                 .fontWeight(.bold)
-                .foregroundStyle(index > 0 && index <= 3 ? YPColor.warning : .secondary)
+                .foregroundStyle(index < 3 ? YPColor.warning : .secondary)
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 3) {

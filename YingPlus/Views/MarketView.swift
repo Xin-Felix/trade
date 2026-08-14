@@ -1,17 +1,5 @@
 import SwiftUI
 
-// MARK: - 市场分类
-
-enum MarketCategory: String, CaseIterable, Identifiable {
-    case aShare = "A股"
-    case hk = "港股"
-    case us = "美股"
-    case etf = "ETF"
-    case indices = "指数"
-
-    var id: String { rawValue }
-}
-
 // MARK: - 资金流向子标签
 
 enum FundFlowTab: String, CaseIterable, Identifiable {
@@ -34,7 +22,6 @@ struct MarketView: View {
     @State private var portfolioCodes: Set<String> = []
     @State private var portfolioItems: [PortfolioItem] = []
     @State private var selectedPortfolioStock: StockBasicInfo?
-    @State private var selectedCategory: MarketCategory = .aShare
     @State private var selectedFundFlowTab: FundFlowTab = .north
     @State private var hotSectors: [SectorMoneyflowData] = []
     @State private var industryFlow: [SectorMoneyflowData] = []
@@ -49,8 +36,7 @@ struct MarketView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     searchSection
-                    categoryTabsSection
-                    categoryContent
+                    aShareContent
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 16)
@@ -205,34 +191,6 @@ struct MarketView: View {
         }
     }
 
-    // MARK: - 分类切换
-
-    private var categoryTabsSection: some View {
-        Picker("市场分类", selection: $selectedCategory) {
-            ForEach(MarketCategory.allCases) { category in
-                Text(category.rawValue).tag(category)
-            }
-        }
-        .pickerStyle(.segmented)
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    // MARK: - 分类内容
-
-    @ViewBuilder
-    private var categoryContent: some View {
-        switch selectedCategory {
-        case .aShare:
-            aShareContent
-        case .indices:
-            indicesContent
-        case .hk, .us, .etf:
-            placeholderCategoryContent
-        }
-    }
-
     private var aShareContent: some View {
         VStack(spacing: 16) {
             hotSectorsHorizontalSection
@@ -240,33 +198,6 @@ struct MarketView: View {
             deepModulesSection
             moreMenuSection
         }
-    }
-
-    private var indicesContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeaderView(icon: "chart.bar", title: "大盘指数", color: YPColor.market)
-
-            NavigationLink {
-                IndicesListView()
-            } label: {
-                MarketMenuRow(
-                    icon: "globe.asia.australia.fill",
-                    title: "全部指数",
-                    subtitle: "查看国内及全球主要指数走势",
-                    color: YPColor.market
-                )
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var placeholderCategoryContent: some View {
-        PlaceholderCard(
-            icon: "globe",
-            title: "功能开发中",
-            description: "\(selectedCategory.rawValue) 数据即将上线",
-            color: YPColor.international
-        )
     }
 
     // MARK: - 热门板块
@@ -463,31 +394,6 @@ struct MarketView: View {
 
                 NavigationLink { SectorIntradayFlowView() } label: {
                     MarketMenuRow(icon: "waveform.path.ecg", title: "分时资金流向", subtitle: "概念板块实时资金流向", color: YPColor.accent)
-                }
-                .buttonStyle(.plain)
-
-                NavigationLink { PointsView() } label: {
-                    MarketMenuRow(icon: "bitcoinsign.circle.fill", title: "我的积分", subtitle: "积分余额与明细", color: YPColor.warning)
-                }
-                .buttonStyle(.plain)
-
-                NavigationLink { MembershipView(paymentInfo: nil) } label: {
-                    MarketMenuRow(icon: "crown.fill", title: "会员中心", subtitle: "会员权益与订阅", color: YPColor.warning)
-                }
-                .buttonStyle(.plain)
-
-                NavigationLink { WidgetsView() } label: {
-                    MarketMenuRow(icon: "widget.small", title: "行情小组件", subtitle: "桌面组件配置", color: YPColor.market)
-                }
-                .buttonStyle(.plain)
-
-                NavigationLink { APITestView() } label: {
-                    MarketMenuRow(icon: "hammer.fill", title: "接口测试", subtitle: "API 调试工具", color: .secondary)
-                }
-                .buttonStyle(.plain)
-
-                NavigationLink { H5PageView(slug: "help-feedback", defaultTitle: "帮助与反馈") } label: {
-                    MarketMenuRow(icon: "questionmark.circle.fill", title: "帮助与反馈", subtitle: "常见问题与意见反馈", color: YPColor.info)
                 }
                 .buttonStyle(.plain)
             }

@@ -45,13 +45,8 @@ struct HomeView: View {
         globalIndices = data.globalIndices
         hotSectors = data.hotSectors
 
-        let score = deriveSentimentScore(from: domesticIndices)
-        marketSentiment = MarketSentiment(
-            score: score,
-            label: sentimentLabel(for: score),
-            reason: "大盘温和震荡，热点板块轮动。"
-        )
-        // 预加载数据不携带 AI 晨报内容，进入首页后再异步拉取
+        // 市场温度从 API 拉取，预加载阶段先用 nil
+        marketSentiment = nil
         aiMorningBrief = nil
     }
 
@@ -65,6 +60,7 @@ struct HomeView: View {
         async let globalTask = StockService.fetchGlobalIndices(policy: policy)
         async let hotSectorsTask = StockService.fetchSectorMoneyflow(sectorType: .industry, limit: 12, policy: policy)
         async let morningReportTask = AiMorningReportService.fetchLatestAvailableReport()
+        async let pulseTask = MarketPulseService.fetchToday()
 
         do { domesticIndices = try await domesticTask } catch { if error is CancellationError { return }; print("[Home] 国内指数加载失败: \(error)") }
         do {
@@ -77,13 +73,52 @@ struct HomeView: View {
             hotSectors = resp.sectors
         } catch { if error is CancellationError { return }; print("[Home] 热门板块加载失败: \(error)") }
 
-        // TODO: 接入真实市场情绪 API 后替换为服务端数据
-        let score = deriveSentimentScore(from: domesticIndices)
-        marketSentiment = MarketSentiment(
-            score: score,
-            label: sentimentLabel(for: score),
-            reason: "大盘温和震荡，热点板块轮动。"
-        )
+        // 市场温度 - 从 API 获取
+        do {
+            if let pulse = try await pulseTask {
+                let indicators = MarketPulseIndicatorDisplay(
+                    upCount: pulse.indicators.upCount ?? 0,
+                    downCount: pulse.indicators.downCount ?? 0,
+                    amount: pulse.indicators.amount ?? 0,
+                    amountChangePct: pulse.indicators.amountChangePct ?? 0,
+                    northMoney: pulse.indicators.northMoney ?? 0,
+                    limitUpCount: pulse.indicators.limitUpCount ?? 0,
+                    limitDownCount: pulse.indicators.limitDownCount ?? 0,
+                    maxBoard: pulse.indicators.maxContinuousBoard ?? 0
+                )
+                marketSentiment = MarketSentiment(
+                    score: pulse.score,
+                    label: pulse.level,
+                    reason: pulse.summary ?? "",
+                    keywords: pulse.keywords,
+                    indicators: indicators,
+                    tradeDate: pulse.tradeDate
+                )
+            } else {
+                // API 无数据时降级为本地简单计算
+                let score = deriveSentimentScore(from: domesticIndices)
+                marketSentiment = MarketSentiment(
+                    score: score,
+                    label: sentimentLabel(for: score),
+                    reason: "",
+                    keywords: [],
+                    indicators: nil,
+                    tradeDate: nil
+                )
+            }
+        } catch {
+            if error is CancellationError { return }
+            print("[Home] 市场温度加载失败: \(error)")
+            let score = deriveSentimentScore(from: domesticIndices)
+            marketSentiment = MarketSentiment(
+                score: score,
+                label: sentimentLabel(for: score),
+                reason: "",
+                keywords: [],
+                indicators: nil,
+                tradeDate: nil
+            )
+        }
 
         do {
             let report = try await morningReportTask

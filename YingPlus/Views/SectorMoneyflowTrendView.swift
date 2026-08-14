@@ -45,7 +45,8 @@ struct SectorMoneyflowTrendView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var isLandscapePresented = false
-    @State private var showSaveSuccess = false
+    @State private var showSectorPicker = false
+    @State private var selectedSectorIds: [String] = []
 
     @State private var displayedSeries: [SectorMoneyflowSeries] = []
     @State private var displayedColorMap: [String: Color] = [:]
@@ -85,6 +86,7 @@ struct SectorMoneyflowTrendView: View {
             await loadTrend()
         }
         .onChange(of: selectedType) { _, _ in
+            selectedSectorIds = []
             Task { await loadTrend() }
         }
         .onChange(of: startDate) { _, _ in
@@ -102,6 +104,9 @@ struct SectorMoneyflowTrendView: View {
         .onChange(of: topN) { _, _ in
             Task { await loadTrend() }
         }
+        .onChange(of: selectedSectorIds) { _, _ in
+            Task { await loadTrend() }
+        }
         .fullScreenCover(isPresented: $isLandscapePresented) {
             LandscapeChartView(
                 series: displayedSeries,
@@ -110,114 +115,119 @@ struct SectorMoneyflowTrendView: View {
                 isCumulative: dataMode == .cumulative
             )
         }
-        .overlay {
-            if showSaveSuccess {
-                saveSuccessToast
+        .sheet(isPresented: $showSectorPicker) {
+            TrendSectorPickerView(
+                selectedType: selectedType,
+                selectedIds: $selectedSectorIds,
+                startDate: dateFormatter.string(from: startDate),
+                endDate: dateFormatter.string(from: endDate)
+            ) {
+                Task { await loadTrend() }
             }
         }
     }
 
     private var controlsSection: some View {
-        VStack(spacing: 12) {
-            Picker("板块类型", selection: $selectedType) {
-                Text("行业").tag(SectorMoneyflowType.industry)
-                Text("概念").tag(SectorMoneyflowType.concept)
-            }
-            .pickerStyle(.segmented)
+        VStack(spacing: 10) {
+            // 板块类型 + 数据模式 并排
+            HStack(spacing: 10) {
+                Picker("板块类型", selection: $selectedType) {
+                    Text("板块").tag(SectorMoneyflowType.industry)
+                    Text("概念").tag(SectorMoneyflowType.concept)
+                }
+                .pickerStyle(.segmented)
 
-            dataModePicker
-            dateRangePicker
-            sortAndTopNControls
-        }
-    }
-
-    private var dataModePicker: some View {
-        Picker("数据模式", selection: $dataMode) {
-            ForEach(SectorMoneyflowTrendDataMode.allCases) { mode in
-                Text(mode.title).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
-    }
-
-    private var dateRangePicker: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Text("开始日期")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                DatePicker(
-                    "",
-                    selection: $startDate,
-                    in: ...endDate,
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.compact)
-                .labelsHidden()
-                .frame(maxWidth: 120)
-            }
-
-            Divider()
-
-            HStack {
-                Text("结束日期")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                DatePicker(
-                    "",
-                    selection: $endDate,
-                    in: startDate...Date(),
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.compact)
-                .labelsHidden()
-                .frame(maxWidth: 120)
-            }
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var sortAndTopNControls: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Text("排序")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Picker("排序", selection: $selectedSort) {
-                    ForEach(SectorMoneyflowTrendSort.allCases) { sort in
-                        Text(sort.title).tag(sort)
+                Picker("数据模式", selection: $dataMode) {
+                    ForEach(SectorMoneyflowTrendDataMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
                     }
                 }
-                .pickerStyle(.menu)
+                .pickerStyle(.segmented)
             }
 
-            Divider()
+            // 日期 + 排序 + 数量，合并为一个卡片
+            VStack(spacing: 0) {
+                HStack {
+                    Text("开始")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, alignment: .leading)
+                    DatePicker("", selection: $startDate, in: ...endDate, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                    Spacer()
+                    Text("结束")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    DatePicker("", selection: $endDate, in: startDate...Date(), displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
 
-            HStack {
-                Text("展示数量")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Divider().padding(.leading, 12)
 
-                Spacer()
+                HStack {
+                    Text("排序")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Picker("", selection: $selectedSort) {
+                        ForEach(SectorMoneyflowTrendSort.allCases) { sort in
+                            Text(sort.title).tag(sort)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
 
-                Stepper("\(topN)", value: $topN, in: 3...30)
-                    .frame(maxWidth: 120)
+                Divider().padding(.leading, 12)
+
+                HStack {
+                    Text("展示数量")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Stepper("\(topN)", value: $topN, in: 3...30)
+                        .frame(maxWidth: 130)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+
+                Divider().padding(.leading, 12)
+
+                Button {
+                    showSectorPicker = true
+                } label: {
+                    HStack {
+                        Text(selectedType == .industry ? "选择板块" : "选择概念")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if selectedSectorIds.isEmpty {
+                            Text("全部（Top \(topN)）")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        } else {
+                            Text("已选 \(selectedSectorIds.count) 个")
+                                .font(.caption)
+                                .foregroundStyle(YPColor.accent)
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
             }
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var chartActionButtons: some View {
@@ -233,9 +243,9 @@ struct SectorMoneyflowTrendView: View {
             }
 
             Button {
-                saveChartImage()
+                shareChartImage()
             } label: {
-                Image(systemName: "square.and.arrow.down")
+                Image(systemName: "square.and.arrow.up")
                     .font(.subheadline)
                     .padding(8)
                     .background(.ultraThinMaterial)
@@ -246,23 +256,6 @@ struct SectorMoneyflowTrendView: View {
         .buttonStyle(.plain)
     }
 
-    private var saveSuccessToast: some View {
-        VStack {
-            Spacer()
-
-            Text("已保存到相册")
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(Color.black.opacity(0.8))
-                .clipShape(Capsule())
-                .padding(.bottom, 40)
-        }
-        .transition(.opacity)
-    }
-
     private func loadTrend(forceRefresh: Bool = false) async {
         isLoading = true
         errorMessage = nil
@@ -270,11 +263,13 @@ struct SectorMoneyflowTrendView: View {
 
         do {
             let policy: CachePolicy = forceRefresh ? .skipCache : .default
+            let codes = selectedSectorIds.isEmpty ? nil : selectedSectorIds
             let response = try await StockService.fetchSectorMoneyflowTrend(
                 sectorType: selectedType,
                 startDate: dateFormatter.string(from: startDate),
                 endDate: dateFormatter.string(from: endDate),
                 topN: topN,
+                tsCodes: codes,
                 policy: policy
             )
             rawSeries = response.series
@@ -339,7 +334,7 @@ struct SectorMoneyflowTrendView: View {
         return map
     }
 
-    private func saveChartImage() {
+    private func shareChartImage() {
         guard !displayedSeries.isEmpty else { return }
 
         let exportView = ChartExportView(
@@ -349,22 +344,9 @@ struct SectorMoneyflowTrendView: View {
             isCumulative: dataMode == .cumulative
         )
 
-        let renderer = ImageRenderer(content: exportView)
-        renderer.scale = UIScreen.main.scale
-
-        guard let image = renderer.uiImage else { return }
-
-        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-
-        withAnimation {
-            showSaveSuccess = true
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            withAnimation {
-                showSaveSuccess = false
-            }
-        }
+        // 横屏比例渲染，避免竖屏裁剪
+        guard let image = ShareService.renderImage(content: exportView, width: 800) else { return }
+        ShareService.shareImage(image)
     }
 }
 
@@ -378,7 +360,7 @@ struct ChartContainerView: View {
     let errorMessage: String?
 
     var body: some View {
-        VStack(spacing: 8) {
+        Group {
             if isLoading && series.isEmpty {
                 ProgressView()
                     .scaleEffect(1.2)
@@ -403,12 +385,10 @@ struct ChartContainerView: View {
                     colorMap: colorMap
                 )
                 .frame(height: 320)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .background(Color(.secondarySystemBackground).clipShape(RoundedRectangle(cornerRadius: 10)))
     }
 }
 
@@ -417,31 +397,23 @@ struct LegendView: View {
     let colorMap: [String: Color]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("图例")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 130))], spacing: 6) {
+            ForEach(series) { sector in
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(colorMap[sector.tsCode] ?? .gray)
+                        .frame(width: 7, height: 7)
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 8) {
-                ForEach(series) { sector in
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(colorMap[sector.tsCode] ?? .gray)
-                            .frame(width: 8, height: 8)
+                    Text(sector.name)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
 
-                        Text(sector.name)
-                            .font(.caption)
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        Spacer()
-                    }
+                    Spacer()
                 }
             }
         }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 4)
     }
 }
 
@@ -451,43 +423,40 @@ struct ChartExportView: View {
     let colorMap: [String: Color]
     let isCumulative: Bool
 
-    @Environment(\.colorScheme) private var colorScheme
-
     var body: some View {
-        ZStack {
-            Color(colorScheme == .dark ? UIColor.systemBackground : UIColor.systemBackground)
+        VStack(spacing: 12) {
+            Text(isCumulative ? "累计资金流向趋势" : "当日资金流向趋势")
+                .font(.headline)
+                .padding(.top, 8)
 
-            VStack(spacing: 12) {
-                Text(isCumulative ? "累计资金流向趋势" : "当日资金流向趋势")
-                    .font(.headline)
+            SectorMoneyflowTrendChartView(
+                series: series,
+                dates: dates,
+                currentDayIndex: max(0, dates.count - 1),
+                colorMap: colorMap
+            )
+            .frame(height: 420)
 
-                SectorMoneyflowTrendChartView(
-                    series: series,
-                    dates: dates,
-                    currentDayIndex: max(0, dates.count - 1),
-                    colorMap: colorMap
-                )
-                .frame(height: 500)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))], spacing: 6) {
+                ForEach(series) { sector in
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(colorMap[sector.tsCode] ?? .gray)
+                            .frame(width: 7, height: 7)
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 8) {
-                    ForEach(series) { sector in
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(colorMap[sector.tsCode] ?? .gray)
-                                .frame(width: 8, height: 8)
+                        Text(sector.name)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
 
-                            Text(sector.name)
-                                .font(.caption)
-                                .lineLimit(1)
-
-                            Spacer()
-                        }
+                        Spacer()
                     }
                 }
             }
-            .padding()
+            .padding(.bottom, 4)
         }
-        .frame(width: 900, height: 700)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(.systemBackground))
     }
 }
 
@@ -609,6 +578,130 @@ private let sectorColors: [Color] = [
     Color(red: 0.40, green: 0.35, blue: 0.90),
     Color(red: 0.90, green: 0.55, blue: 0.20)
 ]
+
+// MARK: - 趋势板块选择器（从趋势 API 加载选项，确保名称一致）
+
+struct TrendSectorPickerView: View {
+    let selectedType: SectorMoneyflowType
+    @Binding var selectedIds: [String]
+    let startDate: String
+    let endDate: String
+    var onDone: () -> Void
+
+    @State private var allSectors: [(name: String, tsCode: String)] = []
+    @State private var isLoading = true
+    @State private var searchText = ""
+    @Environment(\.dismiss) private var dismiss
+
+    private let maxSelection = 30
+
+    private var filteredSectors: [(name: String, tsCode: String)] {
+        if searchText.isEmpty { return allSectors }
+        return allSectors.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.tsCode.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    private var pickerTitle: String {
+        selectedType == .industry ? "选择板块" : "选择概念"
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("搜索", text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(10)
+                .background(Color(.tertiarySystemFill))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal)
+                .padding(.top, 8)
+
+                if isLoading {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                } else {
+                    List {
+                        Section("已选 \(selectedIds.count)/\(maxSelection)") {
+                            ForEach(filteredSectors, id: \.tsCode) { sector in
+                                Button {
+                                    toggleSelection(sector.name)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: selectedIds.contains(sector.name) ? "checkmark.circle.fill" : "circle")
+                                            .foregroundStyle(selectedIds.contains(sector.name) ? YPColor.accent : .secondary)
+                                        Text(sector.name)
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(selectedIds.count >= maxSelection && !selectedIds.contains(sector.name))
+                            }
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle(pickerTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    HStack(spacing: 12) {
+                        Button("清空") {
+                            selectedIds = []
+                        }
+                        Button("热门") {
+                            // 选择前 10 个（按累计净流入排序，即 API 默认顺序）
+                            selectedIds = Array(allSectors.prefix(10).map(\.name))
+                        }
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") {
+                        dismiss()
+                        onDone()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .task { await loadSectors() }
+    }
+
+    private func toggleSelection(_ name: String) {
+        if let idx = selectedIds.firstIndex(of: name) {
+            selectedIds.remove(at: idx)
+        } else if selectedIds.count < maxSelection {
+            selectedIds.append(name)
+        }
+    }
+
+    private func loadSectors() async {
+        do {
+            // 请求所有板块（top_n=100）获取完整列表
+            let response = try await StockService.fetchSectorMoneyflowTrend(
+                sectorType: selectedType,
+                startDate: startDate,
+                endDate: endDate,
+                topN: 100,
+                policy: .default
+            )
+            let sectors = response.series.map { (name: $0.name, tsCode: $0.tsCode) }
+            await MainActor.run {
+                allSectors = sectors
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run { isLoading = false }
+        }
+    }
+}
 
 #Preview {
     NavigationStack {

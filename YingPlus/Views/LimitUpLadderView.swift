@@ -12,7 +12,6 @@ struct LimitUpLadderView: View {
     @State private var isDatePickerPresented = false
     @State private var conceptNameToId: [String: String] = [:]
     @State private var hasManualDateSelection = false
-    @State private var showSaveSuccess = false
 
     init() {
         _selectedDate = State(initialValue: MarketCalendar.latestTradeDate())
@@ -53,9 +52,9 @@ struct LimitUpLadderView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
                     Button {
-                        saveImage()
+                        shareImage()
                     } label: {
-                        Image(systemName: "square.and.arrow.down")
+                        Image(systemName: "square.and.arrow.up")
                             .foregroundStyle(YPColor.up)
                     }
                     .disabled(response?.ladder.isEmpty != false)
@@ -105,11 +104,6 @@ struct LimitUpLadderView: View {
                 ),
                 isConcept: true
             )
-        }
-        .overlay {
-            if showSaveSuccess {
-                saveSuccessToast
-            }
         }
     }
 
@@ -404,90 +398,14 @@ struct LimitUpLadderView: View {
         return colors[abs(hash) % colors.count]
     }
 
-    private func saveImage() {
+    private func shareImage() {
         guard let response = response else { return }
 
         let exportView = LadderExportView(response: response)
             .environment(\.colorScheme, .light)
 
-        // 用 ImageRenderer 直接渲染 SwiftUI 视图，尺寸由 SwiftUI 自己决定
-        let renderer = ImageRenderer(content: exportView)
-        renderer.scale = UIScreen.main.scale
-
-        guard let uiImage = renderer.uiImage else { return }
-        let croppedImage = cropBottomWhitespace(uiImage)
-
-        UIImageWriteToSavedPhotosAlbum(croppedImage, nil, nil, nil)
-
-        withAnimation { showSaveSuccess = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            withAnimation { showSaveSuccess = false }
-        }
-    }
-
-    /// 裁剪图片底部连续的近似白色空白区域
-    private func cropBottomWhitespace(_ image: UIImage, tolerance: CGFloat = 0.06) -> UIImage {
-        guard let cgImage = image.cgImage else { return image }
-        let width = cgImage.width
-        let height = cgImage.height
-
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bytesPerPixel = 4
-        let bytesPerRow = bytesPerPixel * width
-        var pixelData = [UInt8](repeating: 0, count: width * height * 4)
-
-        guard let context = CGContext(
-            data: &pixelData,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: bytesPerRow,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return image }
-
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        var lastContentRow = height - 1
-        for y in (0..<height).reversed() {
-            var rowHasContent = false
-            for x in 0..<width {
-                let offset = (y * width + x) * 4
-                let r = CGFloat(pixelData[offset]) / 255.0
-                let g = CGFloat(pixelData[offset + 1]) / 255.0
-                let b = CGFloat(pixelData[offset + 2]) / 255.0
-
-                if abs(r - 1.0) > tolerance || abs(g - 1.0) > tolerance || abs(b - 1.0) > tolerance {
-                    rowHasContent = true
-                    break
-                }
-            }
-            if rowHasContent {
-                lastContentRow = y
-                break
-            }
-        }
-
-        let cropHeight = lastContentRow + 1
-        let cropRect = CGRect(x: 0, y: 0, width: width, height: cropHeight)
-        guard let croppedCGImage = cgImage.cropping(to: cropRect) else { return image }
-        return UIImage(cgImage: croppedCGImage, scale: image.scale, orientation: image.imageOrientation)
-    }
-
-    private var saveSuccessToast: some View {
-        VStack {
-            Spacer()
-            Text("已保存到相册")
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(Color.black.opacity(0.8))
-                .clipShape(Capsule())
-                .padding(.bottom, 40)
-        }
-        .transition(.opacity)
+        guard let image = ShareService.renderImage(content: exportView, width: 390) else { return }
+        ShareService.shareImage(image)
     }
 
     private func loadData(forceRefresh: Bool = false) async {

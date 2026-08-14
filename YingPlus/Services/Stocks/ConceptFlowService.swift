@@ -207,6 +207,7 @@ enum ConceptFlowService {
     struct IndustryListData: Decodable {
         let industries: [IndustryOption]
         let total: Int
+        let default_ids: [String]
     }
 
     struct IndustryOption: Decodable, Identifiable {
@@ -230,7 +231,11 @@ enum ConceptFlowService {
                     isDefault: $0.is_default
                 )
             }
-            return (options, response.data.default_ids)
+            // 如果服务端没有返回默认勾选，兜底取前 20 个
+            let defaultIds = response.data.default_ids.isEmpty
+                ? Array(options.prefix(20).map(\.id))
+                : response.data.default_ids
+            return (options, defaultIds)
         case .industry:
             let response = try await fetchAvailableIndustries()
             let options = response.data.industries.map {
@@ -241,8 +246,10 @@ enum ConceptFlowService {
                     isDefault: false
                 )
             }
-            // 行业默认取前 30 个，避免一次加载过多
-            let defaultIds = Array(options.prefix(30).map(\.id))
+            // 优先使用后台配置的默认勾选，未配置则兜底取前 20 个
+            let defaultIds = response.data.default_ids.isEmpty
+                ? Array(options.prefix(20).map(\.id))
+                : response.data.default_ids
             return (options, defaultIds)
         }
     }

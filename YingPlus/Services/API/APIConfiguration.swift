@@ -11,9 +11,9 @@ enum APIEnvironment {
             #if targetEnvironment(simulator)
 //            return "http://127.0.0.1:8000"
             #else
-//            return "http://172.17.80.171:8000"
+            return "http://172.17.80.171:8000"
             #endif
-            return "http://192.168.31.86:8000"
+//            return "http://192.168.31.86:8000"
         case .production:
             return "https://api.example.com"
         }
